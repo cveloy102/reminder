@@ -25,6 +25,10 @@ data class ReminderTask(
     val deletedAt: Long? = null
 )
 
+fun orderedActiveTasks(tasks: List<ReminderTask>): List<ReminderTask> =
+    tasks.filter { it.deletedAt == null }
+        .sortedWith(compareBy<ReminderTask> { it.completed }.thenByDescending { it.pinned })
+
 class TaskStore(context: Context) {
     private val file = AtomicFile(File(context.filesDir, "tasks.json"))
 

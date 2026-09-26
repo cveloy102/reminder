@@ -141,10 +141,10 @@ class MainActivity : ComponentActivity() {
 
     private fun reorderTasks(fromId: String, toId: String) {
         if (fromId == toId) return
-        val active = tasks.filter { it.deletedAt == null }.sortedByDescending { it.pinned }
+        val active = orderedActiveTasks(tasks)
         val from = active.indexOfFirst { it.id == fromId }
         val to = active.indexOfFirst { it.id == toId }
-        if (from < 0 || to < 0) return
+        if (from < 0 || to < 0 || active[from].completed != active[to].completed) return
         val reordered = active.toMutableList().apply {
             val moved = removeAt(from).copy(pinned = active[to].pinned)
             val target = indexOfFirst { it.id == toId }

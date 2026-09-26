@@ -8,6 +8,22 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class TaskBackupTest {
+    @Test fun activeTasksKeepCompletionBelowPinnedAndManualOrder() {
+        val done = ReminderTask("done", "Готово", 1, completed = true)
+        val pinnedDone = ReminderTask("pinned-done", "Готово и закреплено", 2, completed = true, pinned = true)
+        val open = ReminderTask("open", "Открыто", 3)
+        val pinnedOpen = ReminderTask("pinned-open", "Открыто и закреплено", 4, pinned = true)
+        val deleted = ReminderTask("deleted", "Удалено", 5, deletedAt = 6)
+        assertEquals(
+            listOf(pinnedOpen, open, pinnedDone, done),
+            orderedActiveTasks(listOf(done, pinnedDone, open, deleted, pinnedOpen))
+        )
+        assertEquals(
+            listOf(pinnedOpen, open, pinnedDone, done),
+            orderedActiveTasks(listOf(pinnedOpen, open, pinnedDone, done))
+        )
+    }
+
     @Test fun roundTripKeepsRemindersCompletionAndTrash() {
         val original = listOf(
             ReminderTask("one", "Купить молоко", 1000, pinned = true, reminderAt = 4000),

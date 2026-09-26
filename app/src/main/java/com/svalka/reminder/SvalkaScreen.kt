@@ -133,10 +133,7 @@ fun SvalkaScreen(
     var dragTargetId by remember { mutableStateOf<String?>(null) }
     var composerHeightPx by remember { mutableIntStateOf(with(density) { 78.dp.roundToPx() }) }
     var pendingBannerHeightPx by remember { mutableIntStateOf(0) }
-    val active = remember(tasks) {
-        tasks.filter { it.deletedAt == null }
-            .sortedByDescending { it.pinned }
-    }
+    val active = remember(tasks) { orderedActiveTasks(tasks) }
     val currentActive by rememberUpdatedState(active)
     val deleted = remember(tasks) {
         tasks.filter { it.deletedAt != null }.sortedByDescending { it.deletedAt }
@@ -278,7 +275,7 @@ fun SvalkaScreen(
                             LaunchedEffect(dismissState.currentValue) {
                                 if (dismissState.currentValue == SwipeToDismissBoxValue.Settled) swipeHandled = false
                             }
-                            val dragHandle = if (trash) Modifier else Modifier.pointerInput(task.id, task.pinned) {
+                            val dragHandle = if (trash) Modifier else Modifier.pointerInput(task.id, task.pinned, task.completed) {
                                 var targetId: String? = null
                                 detectDragGesturesAfterLongPress(
                                     onDragStart = {
@@ -297,7 +294,9 @@ fun SvalkaScreen(
                                             targetId = info.filter { it.key != source.key }
                                                 .mapNotNull { candidate ->
                                                     val id = (candidate.key as? String)?.removePrefix("active:") ?: return@mapNotNull null
-                                                    currentActive.firstOrNull { it.id == id } ?: return@mapNotNull null
+                                                    val candidateTask = currentActive.firstOrNull { it.id == id }
+                                                        ?: return@mapNotNull null
+                                                    if (candidateTask.completed != task.completed) return@mapNotNull null
                                                     id to kotlin.math.abs(center - candidate.offset - candidate.size / 2f)
                                                 }
                                                 .minByOrNull { it.second }?.takeIf { it.second < source.size * 0.7f }?.first
