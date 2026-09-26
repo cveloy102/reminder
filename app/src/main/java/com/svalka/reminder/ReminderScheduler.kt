@@ -18,11 +18,12 @@ import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 
-private const val CHANNEL_ID = "reminders_sound_v2"
+private const val CHANNEL_ID = "reminders_sound_v3"
 private val VIBRATION_PATTERN = longArrayOf(0, 140, 80, 180)
+private const val MISSED_REMINDER_WINDOW = 24L * 60 * 60 * 1000
 
 private fun reminderSoundUri(context: Context): Uri {
-    val name = context.resources.getResourceEntryName(R.raw.reminder_chime)
+    val name = context.resources.getResourceEntryName(R.raw.reminder_signal)
     return Uri.parse("android.resource://${context.packageName}/raw/$name")
 }
 
@@ -32,7 +33,7 @@ class ReminderScheduler(private val context: Context) {
     fun createChannel() {
         if (Build.VERSION.SDK_INT >= 26) {
             val channel = NotificationChannel(CHANNEL_ID, "Напоминания", NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "Звуковые напоминания о делах"
+                description = "Дела, о которых пора вспомнить"
                 setSound(reminderSoundUri(context), AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_NOTIFICATION_EVENT)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
@@ -43,6 +44,7 @@ class ReminderScheduler(private val context: Context) {
             context.getSystemService(NotificationManager::class.java).apply {
                 createNotificationChannel(channel)
                 deleteNotificationChannel("reminders")
+                deleteNotificationChannel("reminders_sound_v2")
             }
         }
     }
@@ -51,16 +53,28 @@ class ReminderScheduler(private val context: Context) {
         val at = task.reminderAt ?: return
         if (task.completed || task.deletedAt != null || at <= System.currentTimeMillis()) return
         val pending = pendingIntent(task.id)
-        if (Build.VERSION.SDK_INT >= 31 && !alarmManager.canScheduleExactAlarms()) {
+        try {
+            if (Build.VERSION.SDK_INT >= 31 && !alarmManager.canScheduleExactAlarms()) {
+                alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending)
+            } else {
+                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending)
+            }
+        } catch (_: SecurityException) {
             alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending)
-        } else {
-            alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending)
         }
     }
 
     fun cancel(id: String) = alarmManager.cancel(pendingIntent(id))
 
-    fun rescheduleAll(tasks: List<ReminderTask>) = tasks.forEach { schedule(it) }
+    fun rescheduleAll(tasks: List<ReminderTask>) {
+        val now = System.currentTimeMillis()
+        tasks.forEach { task ->
+            val at = task.reminderAt ?: return@forEach
+            if (task.completed || task.deletedAt != null) return@forEach
+            if (at > now) schedule(task)
+            else if (now - at <= MISSED_REMINDER_WINDOW) postReminder(context, task)
+        }
+    }
 
     fun requestExactAlarmAccessIfNeeded(activity: Activity) {
         if (Build.VERSION.SDK_INT >= 31 && !alarmManager.canScheduleExactAlarms()) {
@@ -91,33 +105,50 @@ class ReminderReceiver : BroadcastReceiver() {
         if (task.completed || task.deletedAt != null || task.reminderAt == null ||
             task.reminderAt > System.currentTimeMillis() + 60_000L
         ) return
+        postReminder(context, task)
+    }
+}
+
+private fun postReminder(context: Context, task: ReminderTask) {
+        val at = task.reminderAt ?: return
+        val delivered = context.getSharedPreferences("delivered_reminders", Context.MODE_PRIVATE)
+        if (delivered.getLong(task.id, Long.MIN_VALUE) == at) return
         if (Build.VERSION.SDK_INT >= 33 &&
             context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) return
+        if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return
         ReminderScheduler(context).createChannel()
+        if (Build.VERSION.SDK_INT >= 26 && context.getSystemService(NotificationManager::class.java)
+                .getNotificationChannel(CHANNEL_ID)?.importance == NotificationManager.IMPORTANCE_NONE) return
         val open = PendingIntent.getActivity(
             context, 0, Intent(context, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("Пора вспомнить")
+            .setContentTitle("СВАЛКА · ПОРА")
             .setContentText(task.title)
             .setStyle(NotificationCompat.BigTextStyle().bigText(task.title))
             .setContentIntent(open)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setColor(0xFFDFFF71.toInt())
             .setSound(reminderSoundUri(context))
             .setVibrate(VIBRATION_PATTERN)
             .build()
-        NotificationManagerCompat.from(context).notify(task.id.hashCode(), notification)
-    }
+        try {
+            NotificationManagerCompat.from(context).notify(task.id.hashCode(), notification)
+            delivered.edit().putLong(task.id, at).apply()
+        } catch (_: SecurityException) {
+            // Permission can be revoked between the check and notify; retry on next app start.
+        }
 }
 
 class RestartReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == Intent.ACTION_BOOT_COMPLETED || intent.action == Intent.ACTION_MY_PACKAGE_REPLACED ||
+            intent.action == Intent.ACTION_TIME_CHANGED || intent.action == Intent.ACTION_TIMEZONE_CHANGED ||
             intent.action == AlarmManager.ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED
         ) {
             ReminderScheduler(context).rescheduleAll(TaskStore(context).load())

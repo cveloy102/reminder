@@ -202,6 +202,9 @@ class MainActivity : ComponentActivity() {
         requestCode: Int, permissions: Array<out String>, grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 100 && grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+            reminders.rescheduleAll(tasks)
+        }
         if (requestCode == 100 && requestExactAfterNotificationPermission &&
             grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED
         ) {
