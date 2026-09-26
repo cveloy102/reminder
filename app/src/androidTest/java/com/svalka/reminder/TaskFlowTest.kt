@@ -7,6 +7,7 @@ import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.geometry.Offset
@@ -26,6 +27,7 @@ import android.app.NotificationManager
 import android.os.Build
 import java.util.Calendar
 import org.junit.Rule
+import org.junit.Assume.assumeTrue
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
@@ -116,7 +118,19 @@ class TaskFlowTest {
         rule.onNodeWithTag("backupMenu").performClick()
         rule.onNodeWithText("СОХРАНИТЬ КОПИЮ").assertIsDisplayed()
         rule.onNodeWithText("ВОССТАНОВИТЬ ИЗ ФАЙЛА").assertIsDisplayed()
-        rule.onNodeWithText("ПОДКЛЮЧИТЬ GOOGLE ДИСК").assertIsDisplayed()
+        check(
+            rule.onAllNodesWithText("ПОДКЛЮЧИТЬ GOOGLE ДИСК").fetchSemanticsNodes().isNotEmpty() ||
+                rule.onAllNodesWithText("СОХРАНИТЬ СЕЙЧАС").fetchSemanticsNodes().isNotEmpty()
+        )
+    }
+
+    @Test fun connectedCloudFileCanBeSavedAgain() {
+        val settings = rule.activity.getSharedPreferences("cloud_backup", android.content.Context.MODE_PRIVATE)
+        assumeTrue(settings.contains("uri"))
+        val previousSave = settings.getLong("last_save", 0L)
+        rule.onNodeWithTag("backupMenu").performClick()
+        rule.onNodeWithText("СОХРАНИТЬ СЕЙЧАС").performClick()
+        rule.waitUntil(15_000) { settings.getLong("last_save", 0L) > previousSave }
     }
 
     @Test fun longTaskIsFullyVisibleAndEditable() {
