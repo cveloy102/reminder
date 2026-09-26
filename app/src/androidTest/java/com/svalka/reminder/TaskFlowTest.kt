@@ -24,6 +24,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import android.app.NotificationManager
 import android.os.Build
+import java.util.Calendar
 import org.junit.Rule
 import org.junit.After
 import org.junit.Before
@@ -85,6 +86,30 @@ class TaskFlowTest {
         }
         rule.onNodeWithText("ТЕМА").performClick()
         rule.onNodeWithText("Как в системе", substring = true).performClick()
+    }
+
+    @Test fun styledReminderPickerSavesDateAndTime() {
+        val title = "Напомнить ${System.currentTimeMillis()}"
+        rule.onNodeWithTag("newTaskInput").performTextInput(title)
+        rule.onNodeWithContentDescription("Добавить дело").performClick()
+        rule.onNodeWithText(title).performClick()
+        rule.onNodeWithText("Назначить дату и время", substring = true).performClick()
+        rule.onNodeWithTag("reminderPicker").assertIsDisplayed()
+        rule.onNodeWithTag("nextMonth").performClick()
+        rule.onNodeWithTag("reminderDay:15").performClick()
+        rule.onNodeWithTag("reminderHour").performTextClearance()
+        rule.onNodeWithTag("reminderHour").performTextInput("12")
+        rule.onNodeWithTag("reminderMinute").performTextClearance()
+        rule.onNodeWithTag("reminderMinute").performTextInput("30")
+        rule.onNodeWithTag("saveReminder").performClick()
+        rule.waitUntil(3_000) {
+            TaskStore(rule.activity).load().firstOrNull { it.title == title }?.reminderAt != null
+        }
+        val saved = TaskStore(rule.activity).load().first { it.title == title }
+        val time = Calendar.getInstance().apply { timeInMillis = saved.reminderAt!! }
+        check(time.get(Calendar.DAY_OF_MONTH) == 15)
+        check(time.get(Calendar.HOUR_OF_DAY) == 12)
+        check(time.get(Calendar.MINUTE) == 30)
     }
 
     @Test fun backupActionsAreAvailable() {

@@ -1,8 +1,6 @@
 package com.svalka.reminder
 
 import android.Manifest
-import android.app.DatePickerDialog
-import android.app.TimePickerDialog
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -19,7 +17,6 @@ import androidx.compose.runtime.setValue
 import androidx.core.view.WindowCompat
 import com.svalka.reminder.ui.theme.SvalkaTheme
 import com.svalka.reminder.ui.theme.ThemeMode
-import java.util.Calendar
 import java.io.ByteArrayOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -99,7 +96,7 @@ class MainActivity : ComponentActivity() {
                     onUpdate = ::save,
                     onReorder = ::reorderTasks,
                     onDelete = ::deletePermanently,
-                    onPickReminder = ::pickReminder,
+                    onSetReminder = ::setReminder,
                     backupPreview = backupPreview,
                     onExport = ::startExport,
                     onChooseImport = { importFile.launch(arrayOf("*/*")) },
@@ -181,26 +178,14 @@ class MainActivity : ComponentActivity() {
         reminders.cancel(task.id)
     }
 
-    private fun pickReminder(task: ReminderTask) {
-        val initial = Calendar.getInstance().apply { timeInMillis = task.reminderAt ?: System.currentTimeMillis() }
-        DatePickerDialog(this, { _, year, month, day ->
-            TimePickerDialog(this, { _, hour, minute ->
-                val at = Calendar.getInstance().apply {
-                    set(year, month, day, hour, minute, 0)
-                    set(Calendar.MILLISECOND, 0)
-                }.timeInMillis
-                if (at <= System.currentTimeMillis()) {
-                    Toast.makeText(this, "Выбери время в будущем", Toast.LENGTH_SHORT).show()
-                } else {
-                    save(task.copy(reminderAt = at))
-                    requestExactAfterNotificationPermission = true
-                    if (!requestNotificationPermission()) {
-                        requestExactAfterNotificationPermission = false
-                        reminders.requestExactAlarmAccessIfNeeded(this)
-                    }
-                }
-            }, initial.get(Calendar.HOUR_OF_DAY), initial.get(Calendar.MINUTE), true).show()
-        }, initial.get(Calendar.YEAR), initial.get(Calendar.MONTH), initial.get(Calendar.DAY_OF_MONTH)).show()
+    private fun setReminder(task: ReminderTask, at: Long) {
+        if (at <= System.currentTimeMillis()) return
+        save(task.copy(reminderAt = at))
+        requestExactAfterNotificationPermission = true
+        if (!requestNotificationPermission()) {
+            requestExactAfterNotificationPermission = false
+            reminders.requestExactAlarmAccessIfNeeded(this)
+        }
     }
 
     private fun requestNotificationPermission(): Boolean {

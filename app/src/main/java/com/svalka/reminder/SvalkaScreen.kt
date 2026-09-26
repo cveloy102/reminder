@@ -102,7 +102,7 @@ fun SvalkaScreen(
     onUpdate: (ReminderTask) -> Unit,
     onReorder: (String, String) -> Unit,
     onDelete: (ReminderTask) -> Unit,
-    onPickReminder: (ReminderTask) -> Unit,
+    onSetReminder: (ReminderTask, Long) -> Unit,
     backupPreview: TaskBackup?,
     onExport: () -> Unit,
     onChooseImport: () -> Unit,
@@ -120,6 +120,7 @@ fun SvalkaScreen(
     var draftDialog by remember { mutableStateOf(false) }
     var trash by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<ReminderTask?>(null) }
+    var reminderEditing by remember { mutableStateOf<ReminderTask?>(null) }
     var themeDialog by remember { mutableStateOf(false) }
     var backupDialog by remember { mutableStateOf(false) }
     var replaceConfirmation by remember { mutableStateOf(false) }
@@ -529,8 +530,8 @@ fun SvalkaScreen(
                             .background(palette.background)
                             .border(1.dp, palette.divider, RoundedCornerShape(12.dp))
                             .clickable {
+                                reminderEditing = selected.copy(title = normalizeTaskTitle(title).ifEmpty { selected.title })
                                 editing = null
-                                onPickReminder(selected.copy(title = normalizeTaskTitle(title).ifEmpty { selected.title }))
                             }
                             .padding(horizontal = 17.dp, vertical = 17.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -591,6 +592,17 @@ fun SvalkaScreen(
                 }
             }
         }
+    }
+
+    reminderEditing?.let { task ->
+        ReminderPicker(
+            task = task,
+            onDismiss = { reminderEditing = null },
+            onConfirm = { at ->
+                onSetReminder(task, at)
+                reminderEditing = null
+            }
+        )
     }
 
     if (themeDialog) Dialog(onDismissRequest = { themeDialog = false }) {
