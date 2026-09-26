@@ -165,4 +165,20 @@ class TaskFlowTest {
         field.assertIsNotFocused()
         field.assertTextEquals("")
     }
+
+    @Test fun tappingTaskWhileWritingKeepsDraftInFront() {
+        val title = "Проверка черновика ${System.currentTimeMillis()}"
+        val field = rule.onNodeWithTag("newTaskInput")
+        field.performTextInput(title)
+        rule.onNodeWithContentDescription("Добавить дело").performClick()
+
+        field.performClick()
+        field.performTextInput("Новая заметка")
+        rule.onNodeWithText(title).performTouchInput { click() }
+
+        rule.onNodeWithText("Что делать с заметкой?").assertIsDisplayed()
+        rule.onNodeWithTag("editTitle").assertDoesNotExist()
+        rule.onNodeWithText("Продолжить").performClick()
+        field.assertIsFocused()
+    }
 }
