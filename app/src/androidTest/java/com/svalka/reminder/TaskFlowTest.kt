@@ -265,14 +265,19 @@ class TaskFlowTest {
         }
     }
 
-    @Test fun swipeCanBeCancelledBeforeMovingToTrash() {
+    @Test fun swipeMovesImmediatelyAndCanBeCancelled() {
         val title = "Отмена свайпа ${System.currentTimeMillis()}"
         rule.onNodeWithTag("newTaskInput").performTextInput(title)
         rule.onNodeWithContentDescription("Добавить дело").performClick()
         rule.onNodeWithTag("swipeTask:$title").performTouchInput { swipeLeft() }
+        rule.waitUntil(3_000) {
+            TaskStore(rule.activity).load().first { it.title == title }.deletedAt != null
+        }
+        rule.onNodeWithTag("undoCountdown").assertIsDisplayed()
         rule.onNodeWithTag("cancelSwipe").performClick()
         Thread.sleep(2_000)
         check(TaskStore(rule.activity).load().first { it.title == title }.deletedAt == null)
+        rule.onNodeWithTag("blankListArea").performScrollToNode(hasText(title))
         rule.onNodeWithText(title).assertIsDisplayed()
     }
 }

@@ -54,7 +54,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -92,7 +91,6 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -115,7 +113,6 @@ fun SvalkaScreen(
     val focusManager = LocalFocusManager.current
     val context = LocalContext.current
     val density = LocalDensity.current
-    val coroutineScope = rememberCoroutineScope()
     val keyboardController = LocalSoftwareKeyboardController.current
     val inputFocusRequester = remember { FocusRequester() }
     var input by rememberSaveable { mutableStateOf("") }
@@ -128,6 +125,7 @@ fun SvalkaScreen(
     var replaceConfirmation by remember { mutableStateOf(false) }
     var permanentDelete by remember { mutableStateOf<ReminderTask?>(null) }
     var pendingSwipe by remember { mutableStateOf<PendingSwipe?>(null) }
+    var undoSecondsLeft by remember { mutableIntStateOf(10) }
     var draggedId by remember { mutableStateOf<String?>(null) }
     var draggedOffset by remember { mutableStateOf(0f) }
     var dragTargetId by remember { mutableStateOf<String?>(null) }
@@ -142,12 +140,15 @@ fun SvalkaScreen(
     val listState = rememberLazyListState()
 
     LaunchedEffect(pendingSwipe) {
-        val pending = pendingSwipe ?: run {
+        pendingSwipe ?: run {
             pendingBannerHeightPx = 0
             return@LaunchedEffect
         }
-        delay(10_000)
-        onUpdate(pending.task.copy(deletedAt = if (pending.restoring) null else System.currentTimeMillis()))
+        undoSecondsLeft = 10
+        repeat(10) {
+            delay(1_000)
+            undoSecondsLeft = 9 - it
+        }
         pendingSwipe = null
     }
     var previousCount by remember { mutableIntStateOf(tasks.size) }
@@ -325,15 +326,11 @@ fun SvalkaScreen(
                                     if (!swipeHandled) {
                                         swipeHandled = true
                                         if (trash && direction == SwipeToDismissBoxValue.StartToEnd) {
-                                            pendingSwipe?.let { old ->
-                                                onUpdate(old.task.copy(deletedAt = if (old.restoring) null else System.currentTimeMillis()))
-                                            }
-                                            pendingSwipe = PendingSwipe(task, restoring = true, state = dismissState)
+                                            onUpdate(task.copy(deletedAt = null))
+                                            pendingSwipe = PendingSwipe(task, restoring = true)
                                         } else if (!trash && direction == SwipeToDismissBoxValue.EndToStart) {
-                                            pendingSwipe?.let { old ->
-                                                onUpdate(old.task.copy(deletedAt = if (old.restoring) null else System.currentTimeMillis()))
-                                            }
-                                            pendingSwipe = PendingSwipe(task, restoring = false, state = dismissState)
+                                            onUpdate(task.copy(deletedAt = System.currentTimeMillis()))
+                                            pendingSwipe = PendingSwipe(task, restoring = false)
                                         }
                                     }
                                 },
@@ -377,12 +374,14 @@ fun SvalkaScreen(
                         .padding(start = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(if (pending.restoring) "ВОССТАНОВЛЕНИЕ..." else "ПЕРЕНОС В КОРЗИНУ...",
+                    Text(if (pending.restoring) "ВОССТАНОВЛЕНО" else "В КОРЗИНЕ",
                         modifier = Modifier.weight(1f), color = palette.foreground,
                         fontSize = 10.sp, fontWeight = FontWeight.Black)
+                    Text("${undoSecondsLeft} С", modifier = Modifier.testTag("undoCountdown"),
+                        color = palette.secondary, fontSize = 10.sp, fontWeight = FontWeight.Black)
                     TextButton(onClick = {
                         pendingSwipe = null
-                        coroutineScope.launch { pending.state.reset() }
+                        onUpdate(pending.task)
                     }, modifier = Modifier.testTag("cancelSwipe")) {
                         Text("ОТМЕНИТЬ", color = palette.reminderText,
                             fontSize = 10.sp, fontWeight = FontWeight.Black)
@@ -774,8 +773,7 @@ private fun TaskRow(
 
 private data class PendingSwipe(
     val task: ReminderTask,
-    val restoring: Boolean,
-    val state: SwipeToDismissBoxState
+    val restoring: Boolean
 )
 
 private fun formatReminder(timestamp: Long): String =
