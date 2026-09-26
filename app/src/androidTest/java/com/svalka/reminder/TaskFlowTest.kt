@@ -22,17 +22,23 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Rule
 import org.junit.After
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class TaskFlowTest {
     @get:Rule val rule = createAndroidComposeRule<MainActivity>()
+    private lateinit var originalIds: Set<String>
+
+    @Before fun rememberExistingTasks() {
+        originalIds = TaskStore(rule.activity).load().mapTo(HashSet()) { it.id }
+    }
 
     @After fun removeTestTasks() {
         val store = TaskStore(rule.activity)
         val saved = store.load()
-        val generated = saved.filter { it.title.startsWith("Проверка ") || it.title.startsWith("Свайп ") }
+        val generated = saved.filter { it.id !in originalIds }
         generated.forEach { ReminderScheduler(rule.activity).cancel(it.id) }
         store.save(saved - generated.toSet())
     }
@@ -75,6 +81,12 @@ class TaskFlowTest {
         }
         rule.onNodeWithText("ТЕМА").performClick()
         rule.onNodeWithText("Как в системе", substring = true).performClick()
+    }
+
+    @Test fun backupActionsAreAvailable() {
+        rule.onNodeWithTag("backupMenu").performClick()
+        rule.onNodeWithText("СОХРАНИТЬ КОПИЮ").assertIsDisplayed()
+        rule.onNodeWithText("ВОССТАНОВИТЬ ИЗ ФАЙЛА").assertIsDisplayed()
     }
 
     @Test fun swipeMovesTaskToTrash() {

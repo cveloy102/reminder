@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -19,6 +20,10 @@ import androidx.core.view.WindowCompat
 import com.svalka.reminder.ui.theme.SvalkaTheme
 import com.svalka.reminder.ui.theme.ThemeMode
 import java.util.Calendar
+import java.io.ByteArrayOutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.UUID
 
 class MainActivity : ComponentActivity() {
@@ -26,7 +31,39 @@ class MainActivity : ComponentActivity() {
     private lateinit var reminders: ReminderScheduler
     private var tasks by mutableStateOf<List<ReminderTask>>(emptyList())
     private var themeMode by mutableStateOf(ThemeMode.SYSTEM)
+    private var backupPreview by mutableStateOf<TaskBackup?>(null)
     private var requestExactAfterNotificationPermission = false
+
+    private val exportFile = registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) try {
+            val data = TaskBackupCodec.encode(tasks).toByteArray(Charsets.UTF_8)
+            require(data.size <= TaskBackupCodec.MAX_BYTES) { "Список слишком большой для копии" }
+            contentResolver.openOutputStream(uri, "wt")?.use { it.write(data) }
+                ?: throw IllegalStateException("Не удалось открыть файл")
+            Toast.makeText(this, "Копия сохранена", Toast.LENGTH_SHORT).show()
+        } catch (error: Exception) {
+            Toast.makeText(this, "Не удалось сохранить: ${error.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private val importFile = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) try {
+            val bytes = contentResolver.openInputStream(uri)?.use { input ->
+                val output = ByteArrayOutputStream()
+                val buffer = ByteArray(8192)
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    require(output.size() + count <= TaskBackupCodec.MAX_BYTES) { "Файл слишком большой" }
+                    output.write(buffer, 0, count)
+                }
+                output.toByteArray()
+            } ?: throw IllegalStateException("Не удалось открыть файл")
+            backupPreview = TaskBackupCodec.decode(bytes.toString(Charsets.UTF_8))
+        } catch (error: Exception) {
+            Toast.makeText(this, "Не удалось прочитать копию: ${error.message}", Toast.LENGTH_LONG).show()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -59,7 +96,12 @@ class MainActivity : ComponentActivity() {
                     onAdd = ::addTask,
                     onUpdate = ::save,
                     onDelete = ::deletePermanently,
-                    onPickReminder = ::pickReminder
+                    onPickReminder = ::pickReminder,
+                    backupPreview = backupPreview,
+                    onExport = ::startExport,
+                    onChooseImport = { importFile.launch(arrayOf("*/*")) },
+                    onDismissImport = { backupPreview = null },
+                    onConfirmImport = ::restoreBackup
                 )
             }
         }
@@ -91,6 +133,26 @@ class MainActivity : ComponentActivity() {
     private fun addTask(title: String) {
         val clean = title.trim()
         if (clean.isNotEmpty()) save(ReminderTask(UUID.randomUUID().toString(), clean, System.currentTimeMillis()))
+    }
+
+    private fun startExport() {
+        val date = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.ROOT).format(Date())
+        exportFile.launch("svalka-$date.json")
+    }
+
+    private fun restoreBackup(replace: Boolean) {
+        val imported = backupPreview?.tasks ?: return
+        val result = if (replace) imported else TaskBackupCodec.merge(tasks, imported)
+        try {
+            store.save(result)
+            tasks.forEach { reminders.cancel(it.id) }
+            tasks = result
+            reminders.rescheduleAll(result)
+            backupPreview = null
+            Toast.makeText(this, "Дела восстановлены", Toast.LENGTH_SHORT).show()
+        } catch (error: Exception) {
+            Toast.makeText(this, "Не удалось восстановить: ${error.message}", Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun deletePermanently(task: ReminderTask) {

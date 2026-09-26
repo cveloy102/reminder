@@ -88,7 +88,12 @@ fun SvalkaScreen(
     onAdd: (String) -> Unit,
     onUpdate: (ReminderTask) -> Unit,
     onDelete: (ReminderTask) -> Unit,
-    onPickReminder: (ReminderTask) -> Unit
+    onPickReminder: (ReminderTask) -> Unit,
+    backupPreview: TaskBackup?,
+    onExport: () -> Unit,
+    onChooseImport: () -> Unit,
+    onDismissImport: () -> Unit,
+    onConfirmImport: (Boolean) -> Unit
 ) {
     val palette = markerColors()
     val focusManager = LocalFocusManager.current
@@ -100,6 +105,8 @@ fun SvalkaScreen(
     var trash by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<ReminderTask?>(null) }
     var themeDialog by remember { mutableStateOf(false) }
+    var backupDialog by remember { mutableStateOf(false) }
+    var replaceConfirmation by remember { mutableStateOf(false) }
     var permanentDelete by remember { mutableStateOf<ReminderTask?>(null) }
     val active = tasks.filter { it.deletedAt == null }
         .sortedWith(compareBy<ReminderTask> { it.completed }.thenByDescending { it.createdAt })
@@ -163,6 +170,13 @@ fun SvalkaScreen(
                     fontSize = if (trash) 38.sp else 42.sp, lineHeight = 39.sp,
                     fontWeight = FontWeight.Black, letterSpacing = (-2.5).sp
                 )
+                if (!trash) TextButton(
+                    onClick = { backupDialog = true },
+                    contentPadding = PaddingValues(horizontal = 6.dp),
+                    modifier = Modifier.testTag("backupMenu")
+                ) {
+                    Text("ДАННЫЕ", color = palette.foreground, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
                 TextButton(onClick = { if (trash) trash = false else themeDialog = true }) {
                     Text(if (trash) "НАЗАД" else "ТЕМА", color = palette.foreground, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
@@ -410,6 +424,73 @@ fun SvalkaScreen(
             }
         } },
         confirmButton = { TextButton(onClick = { themeDialog = false }) { Text("ГОТОВО") } }
+    )
+
+    if (backupDialog) Dialog(onDismissRequest = { backupDialog = false }) {
+        Surface(shape = RoundedCornerShape(16.dp), color = palette.sheet) {
+            Column(Modifier.fillMaxWidth().padding(24.dp)) {
+                Text("ТВОИ ДЕЛА", color = palette.foreground, fontSize = 25.sp, fontWeight = FontWeight.Black)
+                Spacer(Modifier.height(10.dp))
+                Text("Сохрани файл на телефоне или в облаке. Его можно открыть здесь позже.",
+                    color = palette.secondary, fontSize = 14.sp, lineHeight = 20.sp)
+                Spacer(Modifier.height(24.dp))
+                Button(
+                    onClick = { backupDialog = false; onExport() },
+                    modifier = Modifier.fillMaxWidth().height(54.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = palette.accent, contentColor = palette.accentText),
+                    shape = RoundedCornerShape(8.dp)
+                ) { Text("СОХРАНИТЬ КОПИЮ", fontWeight = FontWeight.Black) }
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = { backupDialog = false; onChooseImport() },
+                    modifier = Modifier.fillMaxWidth().height(54.dp),
+                    shape = RoundedCornerShape(8.dp)
+                ) { Text("ВОССТАНОВИТЬ ИЗ ФАЙЛА", color = palette.foreground, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
+            }
+        }
+    }
+
+    backupPreview?.let { preview ->
+        val currentIds = tasks.mapTo(HashSet<String>()) { it.id }
+        val newCount = preview.tasks.count { it.id !in currentIds }
+        Dialog(onDismissRequest = onDismissImport) {
+            Surface(shape = RoundedCornerShape(16.dp), color = palette.sheet) {
+                Column(Modifier.fillMaxWidth().padding(24.dp)) {
+                    Text("ВОССТАНОВИТЬ КОПИЮ?", color = palette.foreground,
+                        fontSize = 23.sp, lineHeight = 27.sp, fontWeight = FontWeight.Black)
+                    Spacer(Modifier.height(12.dp))
+                    Text("Копия от ${SimpleDateFormat("d MMM yyyy, HH:mm", Locale.forLanguageTag("ru-RU")).format(Date(preview.exportedAt))}",
+                        color = palette.secondary, fontSize = 13.sp)
+                    Spacer(Modifier.height(8.dp))
+                    Text("В файле: ${preview.tasks.size} дел, из них ${preview.tasks.count { it.deletedAt != null }} в корзине.\nСейчас: ${tasks.size} дел. Новых в файле: $newCount.",
+                        color = palette.secondary, fontSize = 14.sp, lineHeight = 21.sp)
+                    Spacer(Modifier.height(24.dp))
+                    Button(
+                        onClick = { onConfirmImport(false) }, enabled = newCount > 0,
+                        modifier = Modifier.fillMaxWidth().height(54.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = palette.accent, contentColor = palette.accentText),
+                        shape = RoundedCornerShape(8.dp)
+                    ) { Text("ДОБАВИТЬ НОВЫЕ · $newCount", fontSize = 13.sp, fontWeight = FontWeight.Black) }
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = { replaceConfirmation = true },
+                        modifier = Modifier.fillMaxWidth().height(54.dp),
+                        shape = RoundedCornerShape(8.dp)
+                    ) { Text("ЗАМЕНИТЬ ВЕСЬ СПИСОК", color = palette.foreground, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
+                    TextButton(onClick = onDismissImport, modifier = Modifier.align(Alignment.End)) {
+                        Text("ОТМЕНА", color = palette.secondary)
+                    }
+                }
+            }
+        }
+    }
+
+    if (replaceConfirmation && backupPreview != null) AlertDialog(
+        onDismissRequest = { replaceConfirmation = false },
+        title = { Text("Заменить все дела?") },
+        text = { Text("Текущий список и корзина будут заменены содержимым файла. Сохрани копию текущих дел, если они нужны.") },
+        confirmButton = { TextButton(onClick = { replaceConfirmation = false; onConfirmImport(true) }) { Text("ЗАМЕНИТЬ") } },
+        dismissButton = { TextButton(onClick = { replaceConfirmation = false }) { Text("ОТМЕНА") } }
     )
 
     permanentDelete?.let { task -> AlertDialog(
