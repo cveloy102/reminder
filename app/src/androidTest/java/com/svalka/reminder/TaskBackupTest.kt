@@ -10,7 +10,7 @@ import org.junit.runner.RunWith
 class TaskBackupTest {
     @Test fun roundTripKeepsRemindersCompletionAndTrash() {
         val original = listOf(
-            ReminderTask("one", "Купить молоко", 1000, reminderAt = 4000),
+            ReminderTask("one", "Купить молоко", 1000, pinned = true, reminderAt = 4000),
             ReminderTask("two", "Сделано", 2000, completed = true),
             ReminderTask("three", "В корзине", 3000, deletedAt = 3500)
         )

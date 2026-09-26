@@ -3,7 +3,9 @@ package com.svalka.reminder
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +24,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -37,8 +40,8 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxState
@@ -51,16 +54,22 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.contentDescription
@@ -75,11 +84,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.zIndex
 import com.svalka.reminder.ui.theme.ThemeMode
 import com.svalka.reminder.ui.theme.markerColors
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -89,6 +102,7 @@ fun SvalkaScreen(
     onThemeChange: (ThemeMode) -> Unit,
     onAdd: (String) -> Unit,
     onUpdate: (ReminderTask) -> Unit,
+    onReorder: (String, String) -> Unit,
     onDelete: (ReminderTask) -> Unit,
     onPickReminder: (ReminderTask) -> Unit,
     backupPreview: TaskBackup?,
@@ -99,6 +113,9 @@ fun SvalkaScreen(
 ) {
     val palette = markerColors()
     val focusManager = LocalFocusManager.current
+    val context = LocalContext.current
+    val density = LocalDensity.current
+    val coroutineScope = rememberCoroutineScope()
     val keyboardController = LocalSoftwareKeyboardController.current
     val inputFocusRequester = remember { FocusRequester() }
     var input by rememberSaveable { mutableStateOf("") }
@@ -110,15 +127,32 @@ fun SvalkaScreen(
     var backupDialog by remember { mutableStateOf(false) }
     var replaceConfirmation by remember { mutableStateOf(false) }
     var permanentDelete by remember { mutableStateOf<ReminderTask?>(null) }
+    var pendingSwipe by remember { mutableStateOf<PendingSwipe?>(null) }
+    var draggedId by remember { mutableStateOf<String?>(null) }
+    var draggedOffset by remember { mutableStateOf(0f) }
+    var dragTargetId by remember { mutableStateOf<String?>(null) }
+    var composerHeightPx by remember { mutableIntStateOf(with(density) { 78.dp.roundToPx() }) }
+    var pendingBannerHeightPx by remember { mutableIntStateOf(0) }
     val active = remember(tasks) {
         tasks.filter { it.deletedAt == null }
-            .sortedWith(compareBy<ReminderTask> { it.completed }.thenByDescending { it.createdAt })
+            .sortedByDescending { it.pinned }
     }
+    val currentActive by rememberUpdatedState(active)
     val deleted = remember(tasks) {
         tasks.filter { it.deletedAt != null }.sortedByDescending { it.deletedAt }
     }
     val visible = if (trash) deleted else active
     val listState = rememberLazyListState()
+
+    LaunchedEffect(pendingSwipe) {
+        val pending = pendingSwipe ?: run {
+            pendingBannerHeightPx = 0
+            return@LaunchedEffect
+        }
+        delay(1_800)
+        onUpdate(pending.task.copy(deletedAt = if (pending.restoring) null else System.currentTimeMillis()))
+        pendingSwipe = null
+    }
     var previousCount by remember { mutableIntStateOf(tasks.size) }
     var previousTrash by remember { mutableStateOf(trash) }
 
@@ -232,11 +266,57 @@ fun SvalkaScreen(
                     modifier = Modifier.weight(1f).testTag("blankListArea")
                 ) {
                     items(visible, key = { "${if (trash) "trash" else "active"}:${it.id}" }) { task ->
-                        Column(Modifier.animateItem()) {
+                        Column(Modifier.animateItem()
+                            .zIndex(if (draggedId == task.id) 1f else 0f)
+                            .graphicsLayer {
+                                translationY = if (draggedId == task.id) draggedOffset else 0f
+                            }) {
                             val dismissState = remember(task.id, trash) {
-                                SwipeToDismissBoxState(SwipeToDismissBoxValue.Settled, positionalThreshold = { it * 0.5f })
+                                SwipeToDismissBoxState(SwipeToDismissBoxValue.Settled, positionalThreshold = { it * 0.72f })
                             }
                             var swipeHandled by remember { mutableStateOf(false) }
+                            LaunchedEffect(dismissState.currentValue) {
+                                if (dismissState.currentValue == SwipeToDismissBoxValue.Settled) swipeHandled = false
+                            }
+                            val dragHandle = if (trash) Modifier else Modifier.pointerInput(task.id, task.pinned) {
+                                var targetId: String? = null
+                                detectDragGesturesAfterLongPress(
+                                    onDragStart = {
+                                        draggedId = task.id
+                                        draggedOffset = 0f
+                                        dragTargetId = null
+                                        targetId = null
+                                    },
+                                    onDrag = { change, amount ->
+                                        change.consume()
+                                        draggedOffset += amount.y
+                                        val info = listState.layoutInfo.visibleItemsInfo
+                                        val source = info.firstOrNull { it.key == "active:${task.id}" }
+                                        if (source != null) {
+                                            val center = source.offset + source.size / 2f + draggedOffset
+                                            targetId = info.filter { it.key != source.key }
+                                                .mapNotNull { candidate ->
+                                                    val id = (candidate.key as? String)?.removePrefix("active:") ?: return@mapNotNull null
+                                                    currentActive.firstOrNull { it.id == id } ?: return@mapNotNull null
+                                                    id to kotlin.math.abs(center - candidate.offset - candidate.size / 2f)
+                                                }
+                                                .minByOrNull { it.second }?.takeIf { it.second < source.size * 0.7f }?.first
+                                            dragTargetId = targetId
+                                        }
+                                    },
+                                    onDragEnd = {
+                                        targetId?.let { onReorder(task.id, it) }
+                                        draggedId = null
+                                        draggedOffset = 0f
+                                        dragTargetId = null
+                                    },
+                                    onDragCancel = {
+                                        draggedId = null
+                                        draggedOffset = 0f
+                                        dragTargetId = null
+                                    }
+                                )
+                            }
                             SwipeToDismissBox(
                                 state = dismissState,
                                 modifier = Modifier.testTag("${if (trash) "restoreTask" else "swipeTask"}:${task.title}"),
@@ -246,9 +326,15 @@ fun SvalkaScreen(
                                     if (!swipeHandled) {
                                         swipeHandled = true
                                         if (trash && direction == SwipeToDismissBoxValue.StartToEnd) {
-                                            onUpdate(task.copy(deletedAt = null))
+                                            pendingSwipe?.let { old ->
+                                                onUpdate(old.task.copy(deletedAt = if (old.restoring) null else System.currentTimeMillis()))
+                                            }
+                                            pendingSwipe = PendingSwipe(task, restoring = true, state = dismissState)
                                         } else if (!trash && direction == SwipeToDismissBoxValue.EndToStart) {
-                                            onUpdate(task.copy(deletedAt = System.currentTimeMillis()))
+                                            pendingSwipe?.let { old ->
+                                                onUpdate(old.task.copy(deletedAt = if (old.restoring) null else System.currentTimeMillis()))
+                                            }
+                                            pendingSwipe = PendingSwipe(task, restoring = false, state = dismissState)
                                         }
                                     }
                                 },
@@ -268,7 +354,15 @@ fun SvalkaScreen(
                                 TaskRow(
                                     task = task, inTrash = trash,
                                     onOpen = { editing = task },
-                                    onToggle = { onUpdate(task.copy(completed = !task.completed)) }
+                                    onToggle = { onUpdate(task.copy(completed = !task.completed)) },
+                                    onPin = {
+                                        onUpdate(task.copy(pinned = !task.pinned))
+                                        android.widget.Toast.makeText(context,
+                                            if (task.pinned) "Откреплено" else "Закреплено",
+                                            android.widget.Toast.LENGTH_SHORT).show()
+                                    },
+                                    dragHandle = dragHandle,
+                                    highlighted = dragTargetId == task.id
                                 )
                             }
                             HorizontalDivider(color = palette.divider)
@@ -276,11 +370,33 @@ fun SvalkaScreen(
                     }
                 }
             }
+            pendingSwipe?.let { pending ->
+                Row(
+                    modifier = Modifier.fillMaxWidth().onSizeChanged { pendingBannerHeightPx = it.height }
+                        .padding(bottom = 8.dp).clip(RoundedCornerShape(8.dp))
+                        .background(palette.sheet).border(1.dp, palette.divider, RoundedCornerShape(8.dp))
+                        .padding(start = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(if (pending.restoring) "ВОССТАНОВЛЕНИЕ..." else "ПЕРЕНОС В КОРЗИНУ...",
+                        modifier = Modifier.weight(1f), color = palette.foreground,
+                        fontSize = 10.sp, fontWeight = FontWeight.Black)
+                    TextButton(onClick = {
+                        pendingSwipe = null
+                        coroutineScope.launch { pending.state.reset() }
+                    }, modifier = Modifier.testTag("cancelSwipe")) {
+                        Text("ОТМЕНИТЬ", color = palette.reminderText,
+                            fontSize = 10.sp, fontWeight = FontWeight.Black)
+                    }
+                }
+            }
             if (!trash) {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp).height(64.dp)
+                    modifier = Modifier.fillMaxWidth()
+                        .onSizeChanged { composerHeightPx = it.height }
+                        .padding(bottom = 14.dp).heightIn(min = 64.dp)
                         .clip(RoundedCornerShape(8.dp)).background(palette.accent)
-                        .padding(start = 18.dp, end = 8.dp),
+                        .padding(start = 18.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
@@ -292,8 +408,11 @@ fun SvalkaScreen(
                             value = input, onValueChange = { input = it },
                             modifier = Modifier.fillMaxWidth().focusRequester(inputFocusRequester)
                                 .onFocusChanged { inputFocused = it.isFocused }
-                                .testTag("newTaskInput"), singleLine = true,
-                            textStyle = TextStyle(color = palette.accentText, fontSize = 16.sp, fontWeight = FontWeight.Bold),
+                                .testTag("newTaskInput"),
+                            minLines = 1,
+                            maxLines = 8,
+                            textStyle = TextStyle(color = palette.accentText, fontSize = 16.sp,
+                                lineHeight = 21.sp, fontWeight = FontWeight.Bold),
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                             keyboardActions = KeyboardActions(onDone = { submit() })
                         )
@@ -312,7 +431,7 @@ fun SvalkaScreen(
             if (inputFocused && !trash) {
                 Box(
                     Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()
-                        .padding(bottom = 78.dp)
+                        .padding(bottom = with(density) { (composerHeightPx + pendingBannerHeightPx).toDp() })
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
@@ -367,58 +486,109 @@ fun SvalkaScreen(
 
     editing?.let { selected ->
         var title by remember(selected.id) { mutableStateOf(selected.title) }
-        ModalBottomSheet(onDismissRequest = { editing = null }, containerColor = palette.sheet) {
+        val editorSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = { editing = null },
+            containerColor = palette.sheet,
+            sheetState = editorSheetState,
+            dragHandle = null
+        ) {
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp).padding(bottom = 34.dp)) {
+                Spacer(Modifier.height(28.dp))
                 Text(
-                    if (trash) "УДАЛЁННОЕ ДЕЛО" else "РЕДАКТИРОВАТЬ ДЕЛО",
-                    color = palette.secondary, fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp
+                    if (trash) "ИЗ КОРЗИНЫ" else "ТВОЯ ЗАМЕТКА",
+                    color = palette.reminderText, fontSize = 11.sp,
+                    fontWeight = FontWeight.Black, letterSpacing = 2.sp
                 )
-                Spacer(Modifier.height(20.dp))
+                Spacer(Modifier.height(9.dp))
+                Text(if (trash) "Удалённое дело." else "Редактировать дело.",
+                    color = palette.foreground, fontSize = 27.sp, lineHeight = 31.sp,
+                    fontWeight = FontWeight.Black, letterSpacing = (-1).sp)
+                Spacer(Modifier.height(28.dp))
                 if (!trash) {
-                    OutlinedTextField(
+                    Text("ТЕКСТ ДЕЛА", color = palette.secondary, fontSize = 11.sp,
+                        fontWeight = FontWeight.Black, letterSpacing = 1.5.sp)
+                    Spacer(Modifier.height(10.dp))
+                    BasicTextField(
                         value = title, onValueChange = { title = it },
-                        modifier = Modifier.fillMaxWidth().testTag("editTitle"), minLines = 2, maxLines = 8,
-                        label = { Text("Название") }
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 112.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(palette.background)
+                            .border(1.dp, palette.divider, RoundedCornerShape(12.dp))
+                            .padding(18.dp).testTag("editTitle"),
+                        minLines = 2, maxLines = 8,
+                        textStyle = TextStyle(color = palette.foreground, fontSize = 19.sp,
+                            lineHeight = 25.sp, fontWeight = FontWeight.SemiBold),
+                        cursorBrush = SolidColor(palette.accent)
                     )
-                    Spacer(Modifier.height(14.dp))
-                    TextButton(onClick = {
-                        editing = null
-                        onPickReminder(selected.copy(title = title.trim().ifEmpty { selected.title }))
-                    }) {
+                    Spacer(Modifier.height(25.dp))
+                    Text("НАПОМИНАНИЕ", color = palette.secondary, fontSize = 11.sp,
+                        fontWeight = FontWeight.Black, letterSpacing = 1.5.sp)
+                    Spacer(Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                            .background(palette.background)
+                            .border(1.dp, palette.divider, RoundedCornerShape(12.dp))
+                            .clickable {
+                                editing = null
+                                onPickReminder(selected.copy(title = normalizeTaskTitle(title).ifEmpty { selected.title }))
+                            }
+                            .padding(horizontal = 17.dp, vertical = 17.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("↗", color = palette.reminderText, fontSize = 23.sp, fontWeight = FontWeight.Bold)
                         Text(
-                            if (selected.reminderAt == null) "+ НАЗНАЧИТЬ НАПОМИНАНИЕ"
-                            else "ИЗМЕНИТЬ ВРЕМЯ · ${formatReminder(selected.reminderAt)}",
-                            color = palette.foreground
+                            if (selected.reminderAt == null) "  Назначить дату и время"
+                            else "  ${formatReminder(selected.reminderAt)}",
+                            modifier = Modifier.weight(1f), color = palette.foreground,
+                            fontSize = 16.sp, fontWeight = FontWeight.Bold
                         )
+                        Text("ВЫБРАТЬ", color = palette.secondary, fontSize = 10.sp,
+                            fontWeight = FontWeight.Black, letterSpacing = 1.sp)
                     }
                     if (selected.reminderAt != null) TextButton(onClick = {
-                        onUpdate(selected.copy(title = title.trim().ifEmpty { selected.title }, reminderAt = null))
+                        onUpdate(selected.copy(title = normalizeTaskTitle(title).ifEmpty { selected.title }, reminderAt = null))
                         editing = null
-                    }) { Text("УБРАТЬ НАПОМИНАНИЕ", color = palette.secondary) }
-                    Spacer(Modifier.height(18.dp))
+                    }, modifier = Modifier.align(Alignment.End)) {
+                        Text("УБРАТЬ НАПОМИНАНИЕ", color = palette.secondary, fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(Modifier.height(26.dp))
+                    HorizontalDivider(color = palette.divider)
+                    Spacer(Modifier.height(22.dp))
                     Button(
-                        onClick = { if (title.isNotBlank()) onUpdate(selected.copy(title = title.trim())); editing = null },
-                        modifier = Modifier.fillMaxWidth().height(54.dp),
+                        onClick = { if (title.isNotBlank()) onUpdate(selected.copy(title = title)); editing = null },
+                        modifier = Modifier.fillMaxWidth().height(58.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = palette.accent, contentColor = palette.accentText),
-                        shape = RoundedCornerShape(7.dp)
-                    ) { Text("СОХРАНИТЬ", fontWeight = FontWeight.Black) }
+                        shape = RoundedCornerShape(10.dp)
+                    ) { Text("СОХРАНИТЬ ИЗМЕНЕНИЯ", fontSize = 13.sp, fontWeight = FontWeight.Black,
+                        letterSpacing = 1.sp) }
                     TextButton(onClick = {
                         onUpdate(selected.copy(deletedAt = System.currentTimeMillis()))
                         editing = null
-                    }) { Text("В КОРЗИНУ", color = palette.secondary) }
+                    }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                        Text("В КОРЗИНУ", color = palette.secondary, fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                    }
                 } else {
-                    Text(selected.title, color = palette.foreground, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(25.dp))
+                    Text(selected.title, color = palette.foreground, fontSize = 20.sp,
+                        lineHeight = 26.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(28.dp))
                     Button(
                         onClick = { onUpdate(selected.copy(deletedAt = null)); editing = null },
-                        modifier = Modifier.fillMaxWidth().height(54.dp),
+                        modifier = Modifier.fillMaxWidth().height(58.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = palette.accent, contentColor = palette.accentText),
-                        shape = RoundedCornerShape(7.dp)
+                        shape = RoundedCornerShape(10.dp)
                     ) { Text("ВОССТАНОВИТЬ", fontWeight = FontWeight.Black) }
-                    TextButton(onClick = { permanentDelete = selected; editing = null }) {
-                        Text("УДАЛИТЬ НАВСЕГДА", color = palette.secondary)
+                    OutlinedButton(
+                        onClick = { permanentDelete = selected; editing = null },
+                        modifier = Modifier.fillMaxWidth().height(54.dp).padding(top = 8.dp),
+                        border = BorderStroke(1.dp, palette.divider),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("УДАЛИТЬ НАВСЕГДА", color = palette.secondary, fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -538,12 +708,20 @@ fun SvalkaScreen(
 }
 
 @Composable
-private fun TaskRow(task: ReminderTask, inTrash: Boolean, onOpen: () -> Unit, onToggle: () -> Unit) {
+private fun TaskRow(
+    task: ReminderTask,
+    inTrash: Boolean,
+    onOpen: () -> Unit,
+    onToggle: () -> Unit,
+    onPin: () -> Unit,
+    dragHandle: Modifier,
+    highlighted: Boolean
+) {
     val palette = markerColors()
     val reminderText = remember(task.reminderAt) { task.reminderAt?.let { formatReminder(it) } }
     Row(
         modifier = Modifier.fillMaxWidth().heightIn(min = 72.dp)
-            .background(palette.background).clickable(onClick = onOpen)
+            .background(if (highlighted) palette.sheet else palette.background)
             .padding(vertical = 19.dp),
         verticalAlignment = Alignment.Top
     ) {
@@ -560,7 +738,14 @@ private fun TaskRow(task: ReminderTask, inTrash: Boolean, onOpen: () -> Unit, on
                 contentAlignment = Alignment.Center
             ) { if (task.completed) Text("✓", color = palette.accentText, fontSize = 16.sp, lineHeight = 16.sp) }
         }
-        Column(modifier = Modifier.weight(1f).padding(top = 3.dp)) {
+        Column(modifier = Modifier.weight(1f)
+            .combinedClickable(onClick = onOpen, onLongClick = if (inTrash) null else onPin)
+            .padding(top = 3.dp)) {
+            if (task.pinned && !inTrash) {
+                Text("ЗАКРЕПЛЕНО", color = palette.reminderText, fontSize = 10.sp,
+                    fontWeight = FontWeight.Black, letterSpacing = 1.2.sp)
+                Spacer(Modifier.height(4.dp))
+            }
             Text(
                 task.title,
                 color = if (task.completed || inTrash) palette.secondary else palette.foreground,
@@ -576,9 +761,23 @@ private fun TaskRow(task: ReminderTask, inTrash: Boolean, onOpen: () -> Unit, on
                 )
             }
         }
-        Text("⋯", color = palette.secondary, fontSize = 24.sp, modifier = Modifier.padding(start = 8.dp))
+        Box(
+            modifier = Modifier.size(44.dp).then(dragHandle)
+                .semantics { contentDescription = "Перетащить: ${task.title}" }
+                .testTag("dragHandle:${task.title}"),
+            contentAlignment = Alignment.TopEnd
+        ) {
+            Text(if (inTrash) "⋯" else "⋮", color = palette.secondary,
+                fontSize = 25.sp, modifier = Modifier.padding(start = 8.dp))
+        }
     }
 }
+
+private data class PendingSwipe(
+    val task: ReminderTask,
+    val restoring: Boolean,
+    val state: SwipeToDismissBoxState
+)
 
 private fun formatReminder(timestamp: Long): String =
     SimpleDateFormat("d MMM, HH:mm", Locale.forLanguageTag("ru-RU"))

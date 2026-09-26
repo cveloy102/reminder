@@ -10,6 +10,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.AudioAttributes
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
@@ -17,15 +18,32 @@ import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 
-private const val CHANNEL_ID = "reminders"
+private const val CHANNEL_ID = "reminders_sound_v2"
+private val VIBRATION_PATTERN = longArrayOf(0, 140, 80, 180)
+
+private fun reminderSoundUri(context: Context): Uri {
+    val name = context.resources.getResourceEntryName(R.raw.reminder_chime)
+    return Uri.parse("android.resource://${context.packageName}/raw/$name")
+}
 
 class ReminderScheduler(private val context: Context) {
     private val alarmManager = context.getSystemService(AlarmManager::class.java)
 
     fun createChannel() {
         if (Build.VERSION.SDK_INT >= 26) {
-            val channel = NotificationChannel(CHANNEL_ID, "Напоминания", NotificationManager.IMPORTANCE_HIGH)
-            context.getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+            val channel = NotificationChannel(CHANNEL_ID, "Напоминания", NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "Звуковые напоминания о делах"
+                setSound(reminderSoundUri(context), AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_NOTIFICATION_EVENT)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build())
+                enableVibration(true)
+                vibrationPattern = VIBRATION_PATTERN
+            }
+            context.getSystemService(NotificationManager::class.java).apply {
+                createNotificationChannel(channel)
+                deleteNotificationChannel("reminders")
+            }
         }
     }
 
@@ -89,6 +107,9 @@ class ReminderReceiver : BroadcastReceiver() {
             .setContentIntent(open)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setSound(reminderSoundUri(context))
+            .setVibrate(VIBRATION_PATTERN)
             .build()
         NotificationManagerCompat.from(context).notify(task.id.hashCode(), notification)
     }

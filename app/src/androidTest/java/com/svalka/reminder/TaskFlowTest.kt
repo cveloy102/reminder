@@ -12,14 +12,18 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.click
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipe
 import androidx.compose.ui.test.swipeRight
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import android.app.NotificationManager
+import android.os.Build
 import org.junit.Rule
 import org.junit.After
 import org.junit.Before
@@ -104,6 +108,9 @@ class TaskFlowTest {
         rule.onNodeWithTag("newTaskInput").performTextInput(title)
         rule.onNodeWithContentDescription("Добавить дело").performClick()
         rule.onNodeWithTag("swipeTask:$title").performTouchInput { swipeLeft() }
+        rule.waitUntil(5_000) {
+            TaskStore(rule.activity).load().firstOrNull { it.title == title }?.deletedAt != null
+        }
         rule.onNodeWithContentDescription("Открыть корзину").performClick()
         rule.onNodeWithText(title).assertIsDisplayed()
         rule.onNodeWithText(title).performClick()
@@ -116,6 +123,9 @@ class TaskFlowTest {
         rule.onNodeWithTag("newTaskInput").performTextInput(title)
         rule.onNodeWithContentDescription("Добавить дело").performClick()
         rule.onNodeWithTag("swipeTask:$title").performTouchInput { swipeLeft() }
+        rule.waitUntil(5_000) {
+            TaskStore(rule.activity).load().firstOrNull { it.title == title }?.deletedAt != null
+        }
         rule.onNodeWithContentDescription("Открыть корзину").performClick()
         rule.onNodeWithTag("restoreTask:$title").performTouchInput { swipeRight() }
         rule.waitUntil(timeoutMillis = 5_000) {
@@ -180,5 +190,89 @@ class TaskFlowTest {
         rule.onNodeWithTag("editTitle").assertDoesNotExist()
         rule.onNodeWithText("Продолжить").performClick()
         field.assertIsFocused()
+    }
+
+    @Test fun newAndEditedTasksStartWithCapitalLetter() {
+        val suffix = System.currentTimeMillis()
+        rule.onNodeWithTag("newTaskInput").performTextInput("купить хлеб $suffix")
+        rule.onNodeWithContentDescription("Добавить дело").performClick()
+        rule.onNodeWithText("Купить хлеб $suffix").performClick()
+        rule.onNodeWithText("Редактировать дело.").assertIsDisplayed()
+        rule.onNodeWithTag("editTitle").assertTextContains("Купить хлеб $suffix")
+        rule.onNodeWithTag("editTitle").performTextClearance()
+        rule.onNodeWithTag("editTitle").performTextInput("позвонить домой $suffix")
+        rule.onNodeWithText("СОХРАНИТЬ ИЗМЕНЕНИЯ").performClick()
+        rule.onNodeWithText("Позвонить домой $suffix").assertIsDisplayed()
+    }
+
+    @Test fun reminderChannelHasPlayableSound() {
+        if (Build.VERSION.SDK_INT < 26) return
+        val manager = rule.activity.getSystemService(NotificationManager::class.java)
+        val channel = manager.getNotificationChannel("reminders_sound_v2")
+        check(channel != null && channel.importance >= NotificationManager.IMPORTANCE_DEFAULT)
+        check(channel.shouldVibrate())
+        val sound = requireNotNull(channel.sound)
+        rule.activity.contentResolver.openInputStream(sound).use { stream ->
+            check(stream != null && stream.read() >= 0)
+        }
+    }
+
+    @Test fun inputGrowsWhenTextWraps() {
+        val field = rule.onNodeWithTag("newTaskInput")
+        val initialHeight = field.fetchSemanticsNode().boundsInRoot.height
+        field.performTextInput("Это длинная запись " .repeat(16))
+        check(field.fetchSemanticsNode().boundsInRoot.height > initialHeight * 2) {
+            "Поле не расширилось для нескольких строк"
+        }
+    }
+
+    @Test fun longPressPinsAndUnpinsTask() {
+        val title = "Закрепить ${System.currentTimeMillis()}"
+        rule.onNodeWithTag("newTaskInput").performTextInput(title)
+        rule.onNodeWithContentDescription("Добавить дело").performClick()
+        rule.onNodeWithText(title).performTouchInput { longClick() }
+        rule.waitUntil(3_000) {
+            TaskStore(rule.activity).load().first { it.title == title }.pinned
+        }
+        rule.onNodeWithText("ЗАКРЕПЛЕНО").assertIsDisplayed()
+        rule.onNodeWithText(title).performTouchInput { longClick() }
+        rule.waitUntil(3_000) {
+            !TaskStore(rule.activity).load().first { it.title == title }.pinned
+        }
+    }
+
+    @Test fun dragHandleSavesManualOrder() {
+        val suffix = System.currentTimeMillis()
+        val first = "Первое $suffix"
+        val second = "Второе $suffix"
+        rule.onNodeWithTag("newTaskInput").performTextInput(first)
+        rule.onNodeWithContentDescription("Добавить дело").performClick()
+        rule.onNodeWithTag("newTaskInput").performTextInput(second)
+        rule.onNodeWithContentDescription("Добавить дело").performClick()
+        val firstY = rule.onNodeWithTag("dragHandle:$first").fetchSemanticsNode().boundsInRoot.center.y
+        val secondY = rule.onNodeWithTag("dragHandle:$second").fetchSemanticsNode().boundsInRoot.center.y
+        val distance = firstY - secondY
+        rule.onNodeWithTag("dragHandle:$second").performTouchInput {
+            down(center)
+            advanceEventTime(700)
+            moveBy(Offset(0f, 12f))
+            moveBy(Offset(0f, distance - 12f))
+            up()
+        }
+        rule.waitUntil(3_000) {
+            val titles = TaskStore(rule.activity).load().map { it.title }
+            titles.indexOf(first) < titles.indexOf(second)
+        }
+    }
+
+    @Test fun swipeCanBeCancelledBeforeMovingToTrash() {
+        val title = "Отмена свайпа ${System.currentTimeMillis()}"
+        rule.onNodeWithTag("newTaskInput").performTextInput(title)
+        rule.onNodeWithContentDescription("Добавить дело").performClick()
+        rule.onNodeWithTag("swipeTask:$title").performTouchInput { swipeLeft() }
+        rule.onNodeWithTag("cancelSwipe").performClick()
+        Thread.sleep(2_000)
+        check(TaskStore(rule.activity).load().first { it.title == title }.deletedAt == null)
+        rule.onNodeWithText(title).assertIsDisplayed()
     }
 }

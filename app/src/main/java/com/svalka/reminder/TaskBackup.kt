@@ -20,6 +20,7 @@ object TaskBackupCodec {
                         put("title", task.title)
                         put("createdAt", task.createdAt)
                         put("completed", task.completed)
+                        put("pinned", task.pinned)
                         put("reminderAt", task.reminderAt ?: JSONObject.NULL)
                         put("deletedAt", task.deletedAt ?: JSONObject.NULL)
                     })
@@ -46,11 +47,13 @@ object TaskBackupCodec {
                 require(title.isNotBlank() && title.length <= 10_000) { "Повреждён текст дела" }
                 val completed = item.opt("completed") as? Boolean
                     ?: throw IllegalArgumentException("Повреждён статус дела")
+                val pinned = item.opt("pinned") as? Boolean ?: false
                 add(ReminderTask(
                     id = id,
                     title = title,
                     createdAt = item.requiredLong("createdAt"),
                     completed = completed,
+                    pinned = pinned,
                     reminderAt = item.optionalLong("reminderAt"),
                     deletedAt = item.optionalLong("deletedAt")
                 ))

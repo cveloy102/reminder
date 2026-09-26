@@ -69,7 +69,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         store = TaskStore(this)
         reminders = ReminderScheduler(this)
-        tasks = store.load()
+        val loadedTasks = store.load()
+        tasks = loadedTasks.map { it.copy(title = normalizeTaskTitle(it.title)) }
+        if (tasks != loadedTasks) store.save(tasks)
         themeMode = ThemeMode.fromValue(getSharedPreferences("settings", MODE_PRIVATE).getString("theme", null))
         reminders.createChannel()
         enableEdgeToEdge()
@@ -95,6 +97,7 @@ class MainActivity : ComponentActivity() {
                     },
                     onAdd = ::addTask,
                     onUpdate = ::save,
+                    onReorder = ::reorderTasks,
                     onDelete = ::deletePermanently,
                     onPickReminder = ::pickReminder,
                     backupPreview = backupPreview,
@@ -119,20 +122,36 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun save(task: ReminderTask) {
-        val index = tasks.indexOfFirst { it.id == task.id }
+        val normalized = task.copy(title = normalizeTaskTitle(task.title))
+        val index = tasks.indexOfFirst { it.id == normalized.id }
         tasks = if (index >= 0) {
-            tasks.toMutableList().apply { this[index] = task }
+            tasks.toMutableList().apply { this[index] = normalized }
         } else {
-            listOf(task) + tasks
+            listOf(normalized) + tasks
         }
         store.save(tasks)
-        reminders.cancel(task.id)
-        reminders.schedule(task)
+        reminders.cancel(normalized.id)
+        reminders.schedule(normalized)
     }
 
     private fun addTask(title: String) {
         val clean = title.trim()
         if (clean.isNotEmpty()) save(ReminderTask(UUID.randomUUID().toString(), clean, System.currentTimeMillis()))
+    }
+
+    private fun reorderTasks(fromId: String, toId: String) {
+        if (fromId == toId) return
+        val active = tasks.filter { it.deletedAt == null }.sortedByDescending { it.pinned }
+        val from = active.indexOfFirst { it.id == fromId }
+        val to = active.indexOfFirst { it.id == toId }
+        if (from < 0 || to < 0) return
+        val reordered = active.toMutableList().apply {
+            val moved = removeAt(from).copy(pinned = active[to].pinned)
+            val target = indexOfFirst { it.id == toId }
+            add(target + if (from < to) 1 else 0, moved)
+        }
+        tasks = reordered + tasks.filter { it.deletedAt != null }
+        store.save(tasks)
     }
 
     private fun startExport() {
@@ -142,7 +161,8 @@ class MainActivity : ComponentActivity() {
 
     private fun restoreBackup(replace: Boolean) {
         val imported = backupPreview?.tasks ?: return
-        val result = if (replace) imported else TaskBackupCodec.merge(tasks, imported)
+        val result = (if (replace) imported else TaskBackupCodec.merge(tasks, imported))
+            .map { it.copy(title = normalizeTaskTitle(it.title)) }
         try {
             store.save(result)
             tasks.forEach { reminders.cancel(it.id) }

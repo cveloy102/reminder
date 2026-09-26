@@ -5,12 +5,22 @@ import android.util.AtomicFile
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.util.Locale
+
+fun normalizeTaskTitle(title: String): String {
+    val clean = title.trim()
+    val firstLetter = clean.indexOfFirst { it.isLetter() }
+    return if (firstLetter < 0) clean else clean.replaceRange(
+        firstLetter, firstLetter + 1, clean[firstLetter].titlecase(Locale.getDefault())
+    )
+}
 
 data class ReminderTask(
     val id: String,
     val title: String,
     val createdAt: Long,
     val completed: Boolean = false,
+    val pinned: Boolean = false,
     val reminderAt: Long? = null,
     val deletedAt: Long? = null
 )
@@ -29,6 +39,7 @@ class TaskStore(context: Context) {
                     title = item.getString("title"),
                     createdAt = item.getLong("createdAt"),
                     completed = item.optBoolean("completed"),
+                    pinned = item.optBoolean("pinned"),
                     reminderAt = if (item.isNull("reminderAt")) null else item.getLong("reminderAt"),
                     deletedAt = if (item.isNull("deletedAt")) null else item.getLong("deletedAt")
                 ))
@@ -46,6 +57,7 @@ class TaskStore(context: Context) {
                 put("title", task.title)
                 put("createdAt", task.createdAt)
                 put("completed", task.completed)
+                put("pinned", task.pinned)
                 put("reminderAt", task.reminderAt ?: JSONObject.NULL)
                 put("deletedAt", task.deletedAt ?: JSONObject.NULL)
             })
