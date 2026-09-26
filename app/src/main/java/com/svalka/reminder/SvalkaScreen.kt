@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.lazy.LazyColumn
@@ -70,7 +72,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -359,7 +360,8 @@ fun SvalkaScreen(
     editing?.let { selected ->
         var title by remember(selected.id) { mutableStateOf(selected.title) }
         ModalBottomSheet(onDismissRequest = { editing = null }, containerColor = palette.sheet) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 34.dp)) {
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp).padding(bottom = 34.dp)) {
                 Text(
                     if (trash) "УДАЛЁННОЕ ДЕЛО" else "РЕДАКТИРОВАТЬ ДЕЛО",
                     color = palette.secondary, fontSize = 12.sp,
@@ -369,7 +371,7 @@ fun SvalkaScreen(
                 if (!trash) {
                     OutlinedTextField(
                         value = title, onValueChange = { title = it },
-                        modifier = Modifier.fillMaxWidth(), singleLine = true,
+                        modifier = Modifier.fillMaxWidth().testTag("editTitle"), minLines = 2, maxLines = 8,
                         label = { Text("Название") }
                     )
                     Spacer(Modifier.height(14.dp))
@@ -415,24 +417,41 @@ fun SvalkaScreen(
         }
     }
 
-    if (themeDialog) AlertDialog(
-        onDismissRequest = { themeDialog = false }, title = { Text("Тема") },
-        text = { Column {
-            ThemeMode.entries.forEach { mode ->
-                val label = when (mode) {
-                    ThemeMode.SYSTEM -> "Как в системе"
-                    ThemeMode.LIGHT -> "Светлая"
-                    ThemeMode.DARK -> "Тёмная"
+    if (themeDialog) Dialog(onDismissRequest = { themeDialog = false }) {
+        Surface(shape = RoundedCornerShape(16.dp), color = palette.sheet,
+            modifier = Modifier.testTag("themeDialog")) {
+            Column(Modifier.fillMaxWidth().padding(24.dp)) {
+                Text("ТЕМА", color = palette.foreground, fontSize = 25.sp, fontWeight = FontWeight.Black)
+                Spacer(Modifier.height(10.dp))
+                Text("Как будет выглядеть СВАЛКА", color = palette.secondary, fontSize = 14.sp)
+                Spacer(Modifier.height(24.dp))
+                ThemeMode.entries.forEach { mode ->
+                    val label = when (mode) {
+                        ThemeMode.SYSTEM -> "Как в системе"
+                        ThemeMode.LIGHT -> "Светлая"
+                        ThemeMode.DARK -> "Тёмная"
+                    }
+                    val selected = themeMode == mode
+                    val shape = RoundedCornerShape(8.dp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().height(56.dp).clip(shape)
+                            .background(if (selected) palette.accent else palette.background)
+                            .border(1.dp, if (selected) palette.accent else palette.divider, shape)
+                            .clickable { onThemeChange(mode); themeDialog = false }
+                            .padding(horizontal = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(label, modifier = Modifier.weight(1f),
+                            color = if (selected) palette.accentText else palette.foreground,
+                            fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        if (selected) Text("✓", color = palette.accentText,
+                            fontSize = 21.sp, fontWeight = FontWeight.Black)
+                    }
+                    Spacer(Modifier.height(8.dp))
                 }
-                Text(
-                    "${if (themeMode == mode) "●" else "○"}  $label",
-                    modifier = Modifier.fillMaxWidth().clickable { onThemeChange(mode); themeDialog = false }
-                        .padding(vertical = 13.dp), fontSize = 17.sp
-                )
             }
-        } },
-        confirmButton = { TextButton(onClick = { themeDialog = false }) { Text("ГОТОВО") } }
-    )
+        }
+    }
 
     if (backupDialog) Dialog(onDismissRequest = { backupDialog = false }) {
         Surface(shape = RoundedCornerShape(16.dp), color = palette.sheet) {
@@ -538,8 +557,7 @@ private fun TaskRow(task: ReminderTask, inTrash: Boolean, onOpen: () -> Unit, on
                 task.title,
                 color = if (task.completed || inTrash) palette.secondary else palette.foreground,
                 fontSize = 18.sp, lineHeight = 23.sp, fontWeight = FontWeight.SemiBold,
-                textDecoration = if (task.completed) TextDecoration.LineThrough else TextDecoration.None,
-                maxLines = 3, overflow = TextOverflow.Ellipsis
+                textDecoration = if (task.completed) TextDecoration.LineThrough else TextDecoration.None
             )
             reminderText?.let {
                 Spacer(Modifier.height(5.dp))

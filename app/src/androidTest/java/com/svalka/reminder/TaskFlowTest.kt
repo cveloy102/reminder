@@ -89,6 +89,16 @@ class TaskFlowTest {
         rule.onNodeWithText("ВОССТАНОВИТЬ ИЗ ФАЙЛА").assertIsDisplayed()
     }
 
+    @Test fun longTaskIsFullyVisibleAndEditable() {
+        val title = "Длинное дело: " + (1..12).joinToString(" ") { "важная подробность $it" }
+        rule.onNodeWithTag("newTaskInput").performTextInput(title)
+        rule.onNodeWithContentDescription("Добавить дело").performClick()
+        val row = rule.onNodeWithTag("swipeTask:$title").fetchSemanticsNode()
+        check(row.boundsInRoot.height > 500f) { "Длинный текст обрезан до нескольких строк" }
+        rule.onNodeWithText(title).performClick()
+        rule.onNodeWithTag("editTitle").assertTextContains(title)
+    }
+
     @Test fun swipeMovesTaskToTrash() {
         val title = "Свайп ${System.currentTimeMillis()}"
         rule.onNodeWithTag("newTaskInput").performTextInput(title)
