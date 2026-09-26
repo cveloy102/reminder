@@ -106,7 +106,7 @@ class MainActivity : ComponentActivity() {
         store = TaskStore(this)
         reminders = ReminderScheduler(this)
         val loadedTasks = store.load()
-        tasks = loadedTasks.map { it.copy(title = normalizeTaskTitle(it.title)) }
+        tasks = loadedTasks.map { it.normalized() }
         if (tasks != loadedTasks) store.save(tasks)
         themeMode = ThemeMode.fromValue(getSharedPreferences("settings", MODE_PRIVATE).getString("theme", null))
         val cloudSettings = getSharedPreferences("cloud_backup", MODE_PRIVATE)
@@ -169,7 +169,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun save(task: ReminderTask) {
-        val normalized = task.copy(title = normalizeTaskTitle(task.title))
+        val normalized = task.normalized()
         val index = tasks.indexOfFirst { it.id == normalized.id }
         tasks = if (index >= 0) {
             tasks.toMutableList().apply { this[index] = normalized }
@@ -194,7 +194,7 @@ class MainActivity : ComponentActivity() {
         val to = active.indexOfFirst { it.id == toId }
         if (from < 0 || to < 0 || active[from].completed != active[to].completed) return
         val reordered = active.toMutableList().apply {
-            val moved = removeAt(from).copy(pinned = active[to].pinned)
+            val moved = removeAt(from).copy(pinned = !active[from].completed && active[to].pinned)
             val target = indexOfFirst { it.id == toId }
             add(target + if (from < to) 1 else 0, moved)
         }
@@ -255,7 +255,7 @@ class MainActivity : ComponentActivity() {
     private fun restoreBackup(replace: Boolean) {
         val imported = backupPreview?.tasks ?: return
         val result = (if (replace) imported else TaskBackupCodec.merge(tasks, imported))
-            .map { it.copy(title = normalizeTaskTitle(it.title)) }
+            .map { it.normalized() }
         try {
             store.save(result)
             tasks.forEach { reminders.cancel(it.id) }

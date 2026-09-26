@@ -358,7 +358,9 @@ fun SvalkaScreen(
                                 TaskRow(
                                     task = task, inTrash = trash,
                                     onOpen = { editing = task },
-                                    onToggle = { onUpdate(task.copy(completed = !task.completed)) },
+                                    onToggle = {
+                                        onUpdate(task.copy(completed = !task.completed, pinned = false))
+                                    },
                                     onPin = {
                                         onUpdate(task.copy(pinned = !task.pinned))
                                         android.widget.Toast.makeText(context,
@@ -803,7 +805,7 @@ private fun TaskRow(
             ) { if (task.completed) Text("✓", color = palette.accentText, fontSize = 16.sp, lineHeight = 16.sp) }
         }
         Column(modifier = Modifier.weight(1f)
-            .combinedClickable(onClick = onOpen, onLongClick = if (inTrash) null else onPin)
+            .combinedClickable(onClick = onOpen, onLongClick = if (inTrash || task.completed) null else onPin)
             .padding(top = 3.dp)) {
             if (task.pinned && !inTrash) {
                 Text("ЗАКРЕПЛЕНО", color = palette.reminderText, fontSize = 10.sp,

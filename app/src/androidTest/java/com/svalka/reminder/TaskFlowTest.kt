@@ -281,6 +281,27 @@ class TaskFlowTest {
         }
     }
 
+    @Test fun completingTaskRemovesPinAndReturningItDoesNotRestorePin() {
+        val title = "Снять закреп ${System.currentTimeMillis()}"
+        rule.onNodeWithTag("newTaskInput").performTextInput(title)
+        rule.onNodeWithContentDescription("Добавить дело").performClick()
+        rule.onNodeWithText(title).performTouchInput { longClick() }
+        rule.waitUntil(3_000) {
+            TaskStore(rule.activity).load().first { it.title == title }.pinned
+        }
+
+        rule.onNodeWithContentDescription("Вычеркнуть дело: $title").performClick()
+        rule.waitUntil(3_000) {
+            TaskStore(rule.activity).load().first { it.title == title }.let { it.completed && !it.pinned }
+        }
+
+        rule.onNodeWithTag("blankListArea").performScrollToNode(hasText(title))
+        rule.onNodeWithContentDescription("Вернуть дело: $title").performClick()
+        rule.waitUntil(3_000) {
+            TaskStore(rule.activity).load().first { it.title == title }.let { !it.completed && !it.pinned }
+        }
+    }
+
     @Test fun dragHandleSavesManualOrder() {
         val suffix = System.currentTimeMillis()
         val first = "Первое $suffix"

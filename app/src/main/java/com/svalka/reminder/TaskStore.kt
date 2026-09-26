@@ -25,6 +25,11 @@ data class ReminderTask(
     val deletedAt: Long? = null
 )
 
+fun ReminderTask.normalized(): ReminderTask = copy(
+    title = normalizeTaskTitle(title),
+    pinned = pinned && !completed
+)
+
 fun orderedActiveTasks(tasks: List<ReminderTask>): List<ReminderTask> =
     tasks.filter { it.deletedAt == null }
         .sortedWith(compareBy<ReminderTask> { it.completed }.thenByDescending { it.pinned })
