@@ -46,8 +46,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -108,14 +110,24 @@ fun SvalkaScreen(
     var backupDialog by remember { mutableStateOf(false) }
     var replaceConfirmation by remember { mutableStateOf(false) }
     var permanentDelete by remember { mutableStateOf<ReminderTask?>(null) }
-    val active = tasks.filter { it.deletedAt == null }
-        .sortedWith(compareBy<ReminderTask> { it.completed }.thenByDescending { it.createdAt })
-    val deleted = tasks.filter { it.deletedAt != null }.sortedByDescending { it.deletedAt }
+    val active = remember(tasks) {
+        tasks.filter { it.deletedAt == null }
+            .sortedWith(compareBy<ReminderTask> { it.completed }.thenByDescending { it.createdAt })
+    }
+    val deleted = remember(tasks) {
+        tasks.filter { it.deletedAt != null }.sortedByDescending { it.deletedAt }
+    }
     val visible = if (trash) deleted else active
     val listState = rememberLazyListState()
+    var previousCount by remember { mutableIntStateOf(tasks.size) }
+    var previousTrash by remember { mutableStateOf(trash) }
 
     LaunchedEffect(trash, tasks.size) {
-        if (visible.isNotEmpty()) listState.scrollToItem(0)
+        if (visible.isNotEmpty() && (trash != previousTrash || tasks.size > previousCount)) {
+            listState.scrollToItem(0)
+        }
+        previousCount = tasks.size
+        previousTrash = trash
     }
 
     BackHandler(enabled = trash) { trash = false }
@@ -149,12 +161,13 @@ fun SvalkaScreen(
         keyboardController?.hide()
         if (input.isNotBlank()) draftDialog = true
     }
+    val dismissOnBlank by rememberUpdatedState { dismissInputFromEmptySpace() }
 
     Surface(color = palette.background, modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()
-                .pointerInput(inputFocused, input) {
-                    detectTapGestures(onTap = { dismissInputFromEmptySpace() })
+                .pointerInput(Unit) {
+                    detectTapGestures(onTap = { dismissOnBlank() })
                 }
                 .padding(horizontal = 28.dp)
                 .testTag("mainCanvas")
@@ -181,10 +194,7 @@ fun SvalkaScreen(
                     Text(if (trash) "НАЗАД" else "ТЕМА", color = palette.foreground, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
-            Spacer(Modifier.height(24.dp).fillMaxWidth()
-                .pointerInput(inputFocused, input) {
-                    detectTapGestures(onTap = { dismissInputFromEmptySpace() })
-                }.testTag("emptyTapArea"))
+            Spacer(Modifier.height(24.dp).fillMaxWidth().testTag("emptyTapArea"))
             Text(
                 text = if (trash) "Удалённое можно вернуть."
                     else "${taskCountLabel(active.count { !it.completed })}. Остальное подождёт.",
@@ -211,9 +221,7 @@ fun SvalkaScreen(
             if (visible.isEmpty()) {
                 Box(
                     modifier = Modifier.weight(1f).fillMaxWidth()
-                        .pointerInput(inputFocused, input) {
-                            detectTapGestures(onTap = { dismissInputFromEmptySpace() })
-                        }.testTag("blankListArea"),
+                        .testTag("blankListArea"),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
@@ -225,50 +233,50 @@ fun SvalkaScreen(
             } else {
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier.weight(1f).pointerInput(inputFocused, input) {
-                        detectTapGestures(onTap = { dismissInputFromEmptySpace() })
-                    }.testTag("blankListArea")
+                    modifier = Modifier.weight(1f).testTag("blankListArea")
                 ) {
                     items(visible, key = { "${if (trash) "trash" else "active"}:${it.id}" }) { task ->
-                        val dismissState = remember(task.id, trash) {
-                            SwipeToDismissBoxState(SwipeToDismissBoxValue.Settled, positionalThreshold = { it * 0.5f })
-                        }
-                        var swipeHandled by remember { mutableStateOf(false) }
-                        SwipeToDismissBox(
-                            state = dismissState,
-                            modifier = Modifier.testTag("${if (trash) "restoreTask" else "swipeTask"}:${task.title}"),
-                            enableDismissFromStartToEnd = trash,
-                            enableDismissFromEndToStart = !trash,
-                            onDismiss = { direction ->
-                                if (!swipeHandled) {
-                                    swipeHandled = true
-                                    if (trash && direction == SwipeToDismissBoxValue.StartToEnd) {
-                                        onUpdate(task.copy(deletedAt = null))
-                                    } else if (!trash && direction == SwipeToDismissBoxValue.EndToStart) {
-                                        onUpdate(task.copy(deletedAt = System.currentTimeMillis()))
+                        Column(Modifier.animateItem()) {
+                            val dismissState = remember(task.id, trash) {
+                                SwipeToDismissBoxState(SwipeToDismissBoxValue.Settled, positionalThreshold = { it * 0.5f })
+                            }
+                            var swipeHandled by remember { mutableStateOf(false) }
+                            SwipeToDismissBox(
+                                state = dismissState,
+                                modifier = Modifier.testTag("${if (trash) "restoreTask" else "swipeTask"}:${task.title}"),
+                                enableDismissFromStartToEnd = trash,
+                                enableDismissFromEndToStart = !trash,
+                                onDismiss = { direction ->
+                                    if (!swipeHandled) {
+                                        swipeHandled = true
+                                        if (trash && direction == SwipeToDismissBoxValue.StartToEnd) {
+                                            onUpdate(task.copy(deletedAt = null))
+                                        } else if (!trash && direction == SwipeToDismissBoxValue.EndToStart) {
+                                            onUpdate(task.copy(deletedAt = System.currentTimeMillis()))
+                                        }
+                                    }
+                                },
+                                backgroundContent = {
+                                    Box(
+                                        Modifier.fillMaxSize().background(palette.accent)
+                                            .clearAndSetSemantics { }
+                                            .padding(horizontal = 18.dp),
+                                        contentAlignment = if (trash) Alignment.CenterStart else Alignment.CenterEnd
+                                    ) {
+                                        Text(if (trash) "ВОССТАНОВИТЬ" else "В КОРЗИНУ",
+                                            color = palette.accentText,
+                                            fontSize = 12.sp, fontWeight = FontWeight.Black)
                                     }
                                 }
-                            },
-                            backgroundContent = {
-                                Box(
-                                    Modifier.fillMaxSize().background(palette.accent)
-                                        .clearAndSetSemantics { }
-                                        .padding(horizontal = 18.dp),
-                                    contentAlignment = if (trash) Alignment.CenterStart else Alignment.CenterEnd
-                                ) {
-                                    Text(if (trash) "ВОССТАНОВИТЬ" else "В КОРЗИНУ",
-                                        color = palette.accentText,
-                                        fontSize = 12.sp, fontWeight = FontWeight.Black)
-                                }
+                            ) {
+                                TaskRow(
+                                    task = task, inTrash = trash,
+                                    onOpen = { editing = task },
+                                    onToggle = { onUpdate(task.copy(completed = !task.completed)) }
+                                )
                             }
-                        ) {
-                            TaskRow(
-                                task = task, inTrash = trash,
-                                onOpen = { editing = task },
-                                onToggle = { onUpdate(task.copy(completed = !task.completed)) }
-                            )
+                            HorizontalDivider(color = palette.divider)
                         }
-                        HorizontalDivider(color = palette.divider)
                     }
                 }
             }
@@ -505,6 +513,7 @@ fun SvalkaScreen(
 @Composable
 private fun TaskRow(task: ReminderTask, inTrash: Boolean, onOpen: () -> Unit, onToggle: () -> Unit) {
     val palette = markerColors()
+    val reminderText = remember(task.reminderAt) { task.reminderAt?.let { formatReminder(it) } }
     Row(
         modifier = Modifier.fillMaxWidth().heightIn(min = 72.dp)
             .background(palette.background).clickable(onClick = onOpen)
@@ -532,10 +541,10 @@ private fun TaskRow(task: ReminderTask, inTrash: Boolean, onOpen: () -> Unit, on
                 textDecoration = if (task.completed) TextDecoration.LineThrough else TextDecoration.None,
                 maxLines = 3, overflow = TextOverflow.Ellipsis
             )
-            task.reminderAt?.let {
+            reminderText?.let {
                 Spacer(Modifier.height(5.dp))
                 Text(
-                    "↗  ${formatReminder(it)}",
+                    "↗  $it",
                     color = if (task.completed || inTrash) palette.secondary else palette.reminderText,
                     fontSize = 13.sp, fontWeight = FontWeight.Bold
                 )
