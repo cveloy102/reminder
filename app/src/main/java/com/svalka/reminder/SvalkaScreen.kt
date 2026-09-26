@@ -146,7 +146,7 @@ fun SvalkaScreen(
             pendingBannerHeightPx = 0
             return@LaunchedEffect
         }
-        delay(1_800)
+        delay(10_000)
         onUpdate(pending.task.copy(deletedAt = if (pending.restoring) null else System.currentTimeMillis()))
         pendingSwipe = null
     }
