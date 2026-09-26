@@ -116,6 +116,7 @@ class TaskFlowTest {
         rule.onNodeWithTag("backupMenu").performClick()
         rule.onNodeWithText("СОХРАНИТЬ КОПИЮ").assertIsDisplayed()
         rule.onNodeWithText("ВОССТАНОВИТЬ ИЗ ФАЙЛА").assertIsDisplayed()
+        rule.onNodeWithText("ПОДКЛЮЧИТЬ GOOGLE ДИСК").assertIsDisplayed()
     }
 
     @Test fun longTaskIsFullyVisibleAndEditable() {

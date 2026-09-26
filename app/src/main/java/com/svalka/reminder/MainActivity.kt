@@ -1,11 +1,13 @@
 package com.svalka.reminder
 
 import android.Manifest
+import android.app.Activity
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -15,6 +17,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.setValue
 import androidx.core.view.WindowCompat
+import androidx.lifecycle.lifecycleScope
+import com.google.android.gms.auth.api.identity.AuthorizationRequest
+import com.google.android.gms.auth.api.identity.AuthorizationResult
+import com.google.android.gms.auth.api.identity.Identity
+import com.google.android.gms.auth.api.identity.RevokeAccessRequest
+import com.google.android.gms.common.api.Scope
 import com.svalka.reminder.ui.theme.SvalkaTheme
 import com.svalka.reminder.ui.theme.ThemeMode
 import java.io.ByteArrayOutputStream
@@ -22,6 +30,9 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     private lateinit var store: TaskStore
@@ -29,7 +40,28 @@ class MainActivity : ComponentActivity() {
     private var tasks by mutableStateOf<List<ReminderTask>>(emptyList())
     private var themeMode by mutableStateOf(ThemeMode.SYSTEM)
     private var backupPreview by mutableStateOf<TaskBackup?>(null)
+    private val driveScope = Scope("https://www.googleapis.com/auth/drive.file")
+    private var driveConnected by mutableStateOf(false)
+    private var driveBusy by mutableStateOf(false)
+    private var lastDriveBackupAt by mutableStateOf(0L)
+    private var pendingDriveSnapshot: ByteArray? = null
     private var requestExactAfterNotificationPermission = false
+
+    private val driveAuthorization = registerForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK && result.data != null) {
+            try {
+                finishDriveAuthorization(
+                    Identity.getAuthorizationClient(this).getAuthorizationResultFromIntent(result.data!!)
+                )
+            } catch (error: Exception) {
+                driveFailed("Не удалось подключить Google Диск: ${error.message}")
+            }
+        } else {
+            driveFailed("Подключение Google Диска отменено")
+        }
+    }
 
     private val exportFile = registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) try {
@@ -70,6 +102,9 @@ class MainActivity : ComponentActivity() {
         tasks = loadedTasks.map { it.copy(title = normalizeTaskTitle(it.title)) }
         if (tasks != loadedTasks) store.save(tasks)
         themeMode = ThemeMode.fromValue(getSharedPreferences("settings", MODE_PRIVATE).getString("theme", null))
+        val driveSettings = getSharedPreferences("drive_backup", MODE_PRIVATE)
+        driveConnected = driveSettings.getBoolean("connected", false)
+        lastDriveBackupAt = driveSettings.getLong("last_backup", 0L)
         reminders.createChannel()
         enableEdgeToEdge()
         setContent {
@@ -98,6 +133,12 @@ class MainActivity : ComponentActivity() {
                     onDelete = ::deletePermanently,
                     onSetReminder = ::setReminder,
                     backupPreview = backupPreview,
+                    driveConnected = driveConnected,
+                    driveBusy = driveBusy,
+                    lastDriveBackupAt = lastDriveBackupAt,
+                    onConnectDrive = { authorizeDrive(null) },
+                    onBackupToDrive = ::backupToDrive,
+                    onDisconnectDrive = ::disconnectDrive,
                     onExport = ::startExport,
                     onChooseImport = { importFile.launch(arrayOf("*/*")) },
                     onDismissImport = { backupPreview = null },
@@ -154,6 +195,99 @@ class MainActivity : ComponentActivity() {
     private fun startExport() {
         val date = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.ROOT).format(Date())
         exportFile.launch("svalka-$date.json")
+    }
+
+    private fun backupToDrive() {
+        try {
+            val snapshot = TaskBackupCodec.encode(tasks).toByteArray(Charsets.UTF_8)
+            require(snapshot.size <= TaskBackupCodec.MAX_BYTES) { "Список слишком большой для копии" }
+            authorizeDrive(snapshot)
+        } catch (error: Exception) {
+            Toast.makeText(this, "Не удалось подготовить копию: ${error.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun authorizeDrive(snapshot: ByteArray?) {
+        if (driveBusy) return
+        driveBusy = true
+        pendingDriveSnapshot = snapshot
+        val request = AuthorizationRequest.builder()
+            .setRequestedScopes(listOf(driveScope))
+            .build()
+        Identity.getAuthorizationClient(this).authorize(request)
+            .addOnSuccessListener { result ->
+                if (result.hasResolution()) {
+                    val pendingIntent = result.pendingIntent
+                    if (pendingIntent == null) {
+                        driveFailed("Не удалось открыть вход Google")
+                    } else {
+                        try {
+                            driveAuthorization.launch(IntentSenderRequest.Builder(pendingIntent.intentSender).build())
+                        } catch (error: Exception) {
+                            driveFailed("Не удалось открыть вход Google: ${error.message}")
+                        }
+                    }
+                } else {
+                    finishDriveAuthorization(result)
+                }
+            }
+            .addOnFailureListener { driveFailed("Не удалось подключить Google Диск: ${it.message}") }
+    }
+
+    private fun finishDriveAuthorization(result: AuthorizationResult) {
+        val token = result.accessToken
+        if (token.isNullOrBlank() || driveScope.scopeUri !in result.grantedScopes) {
+            driveFailed("Доступ к Google Диску не предоставлен")
+            return
+        }
+        driveConnected = true
+        getSharedPreferences("drive_backup", MODE_PRIVATE).edit().putBoolean("connected", true).apply()
+        val snapshot = pendingDriveSnapshot
+        pendingDriveSnapshot = null
+        if (snapshot == null) {
+            driveBusy = false
+            Toast.makeText(this, "Google Диск подключён", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val date = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.ROOT).format(Date())
+        val name = "svalka-$date.json"
+        lifecycleScope.launch {
+            try {
+                withContext(Dispatchers.IO) { DriveBackup.upload(token, name, snapshot) }
+                lastDriveBackupAt = System.currentTimeMillis()
+                getSharedPreferences("drive_backup", MODE_PRIVATE).edit()
+                    .putLong("last_backup", lastDriveBackupAt).apply()
+                Toast.makeText(this@MainActivity, "Копия $name сохранена на Google Диске", Toast.LENGTH_LONG).show()
+            } catch (error: Exception) {
+                Toast.makeText(this@MainActivity, "Не удалось сохранить на Диске: ${error.message}", Toast.LENGTH_LONG).show()
+            } finally {
+                driveBusy = false
+            }
+        }
+    }
+
+    private fun disconnectDrive() {
+        if (driveBusy) return
+        driveBusy = true
+        val request = RevokeAccessRequest.builder().setScopes(listOf(driveScope)).build()
+        Identity.getAuthorizationClient(this).revokeAccess(request)
+            .addOnSuccessListener {
+                driveConnected = false
+                driveBusy = false
+                getSharedPreferences("drive_backup", MODE_PRIVATE).edit()
+                    .putBoolean("connected", false).apply()
+                Toast.makeText(this, "Google Диск отключён", Toast.LENGTH_SHORT).show()
+            }
+            .addOnFailureListener {
+                driveBusy = false
+                Toast.makeText(this, "Не удалось отключить Google Диск: ${it.message}", Toast.LENGTH_LONG).show()
+            }
+    }
+
+    private fun driveFailed(message: String) {
+        pendingDriveSnapshot = null
+        driveBusy = false
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
     }
 
     private fun restoreBackup(replace: Boolean) {

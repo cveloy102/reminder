@@ -104,6 +104,12 @@ fun SvalkaScreen(
     onDelete: (ReminderTask) -> Unit,
     onSetReminder: (ReminderTask, Long) -> Unit,
     backupPreview: TaskBackup?,
+    driveConnected: Boolean,
+    driveBusy: Boolean,
+    lastDriveBackupAt: Long,
+    onConnectDrive: () -> Unit,
+    onBackupToDrive: () -> Unit,
+    onDisconnectDrive: () -> Unit,
     onExport: () -> Unit,
     onChooseImport: () -> Unit,
     onDismissImport: () -> Unit,
@@ -643,12 +649,48 @@ fun SvalkaScreen(
 
     if (backupDialog) Dialog(onDismissRequest = { backupDialog = false }) {
         Surface(shape = RoundedCornerShape(16.dp), color = palette.sheet) {
-            Column(Modifier.fillMaxWidth().padding(24.dp)) {
+            Column(Modifier.fillMaxWidth().heightIn(max = 620.dp).verticalScroll(rememberScrollState()).padding(24.dp)) {
                 Text("ТВОИ ДЕЛА", color = palette.foreground, fontSize = 25.sp, fontWeight = FontWeight.Black)
                 Spacer(Modifier.height(10.dp))
-                Text("Сохрани файл на телефоне или в облаке. Его можно открыть здесь позже.",
+                Text("Сохрани файл на телефоне или Google Диске. Его можно открыть здесь позже.",
                     color = palette.secondary, fontSize = 14.sp, lineHeight = 20.sp)
-                Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(20.dp))
+                Text("GOOGLE ДИСК", color = palette.foreground, fontSize = 14.sp, fontWeight = FontWeight.Black)
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    when {
+                        driveBusy -> "Подожди, идёт подключение или сохранение…"
+                        driveConnected && lastDriveBackupAt > 0L -> "Подключён · последняя копия ${SimpleDateFormat("d MMM, HH:mm", Locale.forLanguageTag("ru-RU")).format(Date(lastDriveBackupAt))}"
+                        driveConnected -> "Подключён. Копия появится в разделе «Мой диск»."
+                        else -> "Подключи аккаунт Google, чтобы сохранять копию одним нажатием."
+                    },
+                    color = palette.secondary, fontSize = 13.sp, lineHeight = 19.sp
+                )
+                Spacer(Modifier.height(12.dp))
+                if (!driveConnected) {
+                    OutlinedButton(
+                        onClick = { backupDialog = false; onConnectDrive() }, enabled = !driveBusy,
+                        modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(8.dp)
+                    ) { Text("ПОДКЛЮЧИТЬ GOOGLE ДИСК", color = palette.foreground, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
+                    Spacer(Modifier.height(8.dp))
+                }
+                Button(
+                    onClick = { backupDialog = false; onBackupToDrive() }, enabled = driveConnected && !driveBusy,
+                    modifier = Modifier.fillMaxWidth().height(54.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = palette.accent, contentColor = palette.accentText),
+                    shape = RoundedCornerShape(8.dp)
+                ) { Text("СОХРАНИТЬ НА GOOGLE ДИСК", fontSize = 13.sp, fontWeight = FontWeight.Black) }
+                if (driveConnected) {
+                    TextButton(onClick = { backupDialog = false; onDisconnectDrive() }, enabled = !driveBusy,
+                        modifier = Modifier.align(Alignment.End)) {
+                        Text("ОТКЛЮЧИТЬ ДИСК", color = palette.secondary, fontSize = 12.sp)
+                    }
+                }
+                Spacer(Modifier.height(20.dp))
+                HorizontalDivider(color = palette.secondary.copy(alpha = 0.35f))
+                Spacer(Modifier.height(20.dp))
+                Text("ФАЙЛ", color = palette.foreground, fontSize = 14.sp, fontWeight = FontWeight.Black)
+                Spacer(Modifier.height(12.dp))
                 Button(
                     onClick = { backupDialog = false; onExport() },
                     modifier = Modifier.fillMaxWidth().height(54.dp),
