@@ -274,8 +274,9 @@ class MainActivity : ComponentActivity() {
             .addOnSuccessListener {
                 driveConnected = false
                 driveBusy = false
+                lastDriveBackupAt = 0L
                 getSharedPreferences("drive_backup", MODE_PRIVATE).edit()
-                    .putBoolean("connected", false).apply()
+                    .putBoolean("connected", false).remove("last_backup").apply()
                 Toast.makeText(this, "Google Диск отключён", Toast.LENGTH_SHORT).show()
             }
             .addOnFailureListener {
