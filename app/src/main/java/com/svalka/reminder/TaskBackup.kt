@@ -11,7 +11,7 @@ object TaskBackupCodec {
     fun encode(tasks: List<ReminderTask>, exportedAt: Long = System.currentTimeMillis()): String =
         JSONObject().apply {
             put("app", "com.svalka.reminder")
-            put("version", 1)
+            put("version", 2)
             put("exportedAt", exportedAt)
             put("tasks", JSONArray().apply {
                 tasks.forEach { task ->
@@ -23,6 +23,7 @@ object TaskBackupCodec {
                         put("pinned", task.pinned)
                         put("reminderAt", task.reminderAt ?: JSONObject.NULL)
                         put("deletedAt", task.deletedAt ?: JSONObject.NULL)
+                        put("list", task.list.storageValue)
                     })
                 }
             })
@@ -31,7 +32,7 @@ object TaskBackupCodec {
     fun decode(json: String): TaskBackup {
         require(json.toByteArray(Charsets.UTF_8).size <= MAX_BYTES) { "Файл слишком большой" }
         val root = JSONObject(json)
-        require(root.opt("app") == "com.svalka.reminder" && root.optInt("version", -1) == 1) {
+        require(root.opt("app") == "com.svalka.reminder" && root.optInt("version", -1) in 1..2) {
             "Это не копия СВАЛКИ или её версия не поддерживается"
         }
         val exportedAt = root.requiredLong("exportedAt")
@@ -55,7 +56,8 @@ object TaskBackupCodec {
                     completed = completed,
                     pinned = pinned,
                     reminderAt = item.optionalLong("reminderAt"),
-                    deletedAt = item.optionalLong("deletedAt")
+                    deletedAt = item.optionalLong("deletedAt"),
+                    list = TaskList.fromStorage(item.optString("list", "tasks"))
                 ))
             }
         }

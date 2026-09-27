@@ -98,7 +98,7 @@ fun SvalkaScreen(
     tasks: List<ReminderTask>,
     themeMode: ThemeMode,
     onThemeChange: (ThemeMode) -> Unit,
-    onAdd: (String) -> Unit,
+    onAdd: (String, TaskList) -> Unit,
     onUpdate: (ReminderTask) -> Unit,
     onReorder: (String, String) -> Unit,
     onDelete: (ReminderTask) -> Unit,
@@ -122,7 +122,13 @@ fun SvalkaScreen(
     val density = LocalDensity.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val inputFocusRequester = remember { FocusRequester() }
-    var input by rememberSaveable { mutableStateOf("") }
+    var taskInput by rememberSaveable { mutableStateOf("") }
+    var shoppingInput by rememberSaveable { mutableStateOf("") }
+    var section by rememberSaveable { mutableStateOf(TaskList.TASKS) }
+    val input = if (section == TaskList.TASKS) taskInput else shoppingInput
+    fun updateInput(value: String) {
+        if (section == TaskList.TASKS) taskInput = value else shoppingInput = value
+    }
     var inputFocused by remember { mutableStateOf(false) }
     var draftDialog by remember { mutableStateOf(false) }
     var trash by remember { mutableStateOf(false) }
@@ -139,10 +145,10 @@ fun SvalkaScreen(
     var dragTargetId by remember { mutableStateOf<String?>(null) }
     var composerHeightPx by remember { mutableIntStateOf(with(density) { 78.dp.roundToPx() }) }
     var pendingBannerHeightPx by remember { mutableIntStateOf(0) }
-    val active = remember(tasks) { orderedActiveTasks(tasks) }
+    val active = remember(tasks, section) { orderedActiveTasks(tasks.filter { it.list == section }) }
     val currentActive by rememberUpdatedState(active)
-    val deleted = remember(tasks) {
-        tasks.filter { it.deletedAt != null }.sortedByDescending { it.deletedAt }
+    val deleted = remember(tasks, section) {
+        tasks.filter { it.list == section && it.deletedAt != null }.sortedByDescending { it.deletedAt }
     }
     val visible = if (trash) deleted else active
     val listState = rememberLazyListState()
@@ -161,13 +167,15 @@ fun SvalkaScreen(
     }
     var previousCount by remember { mutableIntStateOf(tasks.size) }
     var previousTrash by remember { mutableStateOf(trash) }
+    var previousSection by remember { mutableStateOf(section) }
 
-    LaunchedEffect(trash, tasks.size) {
-        if (visible.isNotEmpty() && (trash != previousTrash || tasks.size > previousCount)) {
+    LaunchedEffect(section, trash, tasks.size) {
+        if (visible.isNotEmpty() && (section != previousSection || trash != previousTrash || tasks.size > previousCount)) {
             listState.scrollToItem(0)
         }
         previousCount = tasks.size
         previousTrash = trash
+        previousSection = section
     }
 
     BackHandler(enabled = trash) { trash = false }
@@ -188,8 +196,8 @@ fun SvalkaScreen(
 
     fun submit() {
         if (input.isNotBlank()) {
-            onAdd(input)
-            input = ""
+            onAdd(input, section)
+            updateInput("")
             focusManager.clearFocus()
             keyboardController?.hide()
         }
@@ -230,16 +238,34 @@ fun SvalkaScreen(
                     Text(if (trash) "НАЗАД" else "ТЕМА", color = palette.foreground, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
+            Spacer(Modifier.height(22.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                listOf(TaskList.TASKS to "ДЕЛА", TaskList.SHOPPING to "ПОКУПКИ").forEach { (list, label) ->
+                    Column(Modifier.weight(1f).clickable {
+                        section = list
+                        draftDialog = false
+                        focusManager.clearFocus()
+                        keyboardController?.hide()
+                    }.testTag("tab:${list.storageValue}")) {
+                        Text(label, color = if (section == list) palette.foreground else palette.secondary,
+                            fontSize = 12.sp, fontWeight = FontWeight.Black, letterSpacing = 1.3.sp)
+                        Spacer(Modifier.height(10.dp))
+                        Box(Modifier.fillMaxWidth().height(2.dp)
+                            .background(if (section == list) palette.accent else palette.divider))
+                    }
+                }
+            }
             Spacer(Modifier.height(24.dp).fillMaxWidth().testTag("emptyTapArea"))
             Text(
                 text = if (trash) "Удалённое можно вернуть."
+                    else if (section == TaskList.SHOPPING) "Покупок осталось: ${active.count { !it.completed }}."
                     else "${taskCountLabel(active.count { !it.completed })}. Остальное подождёт.",
                 color = palette.secondary, fontSize = 13.sp
             )
             Spacer(Modifier.height(42.dp))
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    if (trash) "УДАЛЁННЫЕ" else "СПИСОК / 001",
+                    if (trash) "УДАЛЁННЫЕ" else if (section == TaskList.SHOPPING) "СПИСОК / 002" else "СПИСОК / 001",
                     modifier = Modifier.weight(1f), color = palette.secondary,
                     fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp
                 )
@@ -261,7 +287,9 @@ fun SvalkaScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        if (trash) "Здесь пока пусто" else "Здесь пока пусто.\nЗапиши первое дело ↓",
+                        if (trash) "Здесь пока пусто"
+                        else if (section == TaskList.SHOPPING) "Здесь пока пусто.\nДобавь первую покупку ↓"
+                        else "Здесь пока пусто.\nЗапиши первое дело ↓",
                         color = palette.secondary, textAlign = TextAlign.Center,
                         fontSize = 17.sp, lineHeight = 26.sp
                     )
@@ -409,11 +437,12 @@ fun SvalkaScreen(
                 ) {
                     Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
                         if (input.isEmpty()) Text(
-                            "ДОБАВИТЬ ДЕЛО", color = palette.accentText,
+                            if (section == TaskList.SHOPPING) "ДОБАВИТЬ ПОКУПКУ" else "ДОБАВИТЬ ДЕЛО",
+                            color = palette.accentText,
                             fontSize = 16.sp, fontWeight = FontWeight.ExtraBold
                         )
                         BasicTextField(
-                            value = input, onValueChange = { input = it },
+                            value = input, onValueChange = ::updateInput,
                             modifier = Modifier.fillMaxWidth().focusRequester(inputFocusRequester)
                                 .onFocusChanged { inputFocused = it.isFocused }
                                 .testTag("newTaskInput"),
@@ -427,7 +456,7 @@ fun SvalkaScreen(
                     }
                     Box(
                         modifier = Modifier.size(48.dp).clip(RoundedCornerShape(5.dp))
-                            .semantics { contentDescription = "Добавить дело" }
+                            .semantics { contentDescription = if (section == TaskList.SHOPPING) "Добавить покупку" else "Добавить дело" }
                             .background(palette.accentText).clickable { submit() },
                         contentAlignment = Alignment.Center
                     ) {
@@ -477,7 +506,7 @@ fun SvalkaScreen(
                             fontWeight = FontWeight.Bold)
                     }
                     OutlinedButton(
-                        onClick = { input = ""; draftDialog = false },
+                        onClick = { updateInput(""); draftDialog = false },
                         modifier = Modifier.weight(1f).height(56.dp),
                         contentPadding = PaddingValues(horizontal = 8.dp),
                         shape = RoundedCornerShape(8.dp)
@@ -505,17 +534,17 @@ fun SvalkaScreen(
                 .padding(horizontal = 24.dp).padding(bottom = 34.dp)) {
                 Spacer(Modifier.height(28.dp))
                 Text(
-                    if (trash) "ИЗ КОРЗИНЫ" else "ТВОЯ ЗАМЕТКА",
+                    if (trash) "ИЗ КОРЗИНЫ" else if (section == TaskList.SHOPPING) "ТВОЯ ПОКУПКА" else "ТВОЯ ЗАМЕТКА",
                     color = palette.reminderText, fontSize = 11.sp,
                     fontWeight = FontWeight.Black, letterSpacing = 2.sp
                 )
                 Spacer(Modifier.height(9.dp))
-                Text(if (trash) "Удалённое дело." else "Редактировать дело.",
+                Text(if (trash) "Удалённая запись." else if (section == TaskList.SHOPPING) "Редактировать покупку." else "Редактировать дело.",
                     color = palette.foreground, fontSize = 27.sp, lineHeight = 31.sp,
                     fontWeight = FontWeight.Black, letterSpacing = (-1).sp)
                 Spacer(Modifier.height(28.dp))
                 if (!trash) {
-                    Text("ТЕКСТ ДЕЛА", color = palette.secondary, fontSize = 11.sp,
+                    Text(if (section == TaskList.SHOPPING) "ТЕКСТ ПОКУПКИ" else "ТЕКСТ ДЕЛА", color = palette.secondary, fontSize = 11.sp,
                         fontWeight = FontWeight.Black, letterSpacing = 1.5.sp)
                     Spacer(Modifier.height(10.dp))
                     BasicTextField(
@@ -653,9 +682,9 @@ fun SvalkaScreen(
     if (backupDialog) Dialog(onDismissRequest = { backupDialog = false }) {
         Surface(shape = RoundedCornerShape(16.dp), color = palette.sheet) {
             Column(Modifier.fillMaxWidth().heightIn(max = 620.dp).verticalScroll(rememberScrollState()).padding(24.dp)) {
-                Text("ТВОИ ДЕЛА", color = palette.foreground, fontSize = 25.sp, fontWeight = FontWeight.Black)
+                Text("ТВОИ ДАННЫЕ", color = palette.foreground, fontSize = 25.sp, fontWeight = FontWeight.Black)
                 Spacer(Modifier.height(10.dp))
-                Text("Копия защищает твои дела. Восстановить её можно из файла в этом меню.",
+                Text("Копия сохраняет дела и покупки. Восстановить её можно из файла в этом меню.",
                     color = palette.secondary, fontSize = 14.sp, lineHeight = 20.sp)
                 Spacer(Modifier.height(20.dp))
                 Text("GOOGLE ДИСК", color = palette.foreground, fontSize = 14.sp, fontWeight = FontWeight.Black)
@@ -733,7 +762,7 @@ fun SvalkaScreen(
                     Text("Копия от ${SimpleDateFormat("d MMM yyyy, HH:mm", Locale.forLanguageTag("ru-RU")).format(Date(preview.exportedAt))}",
                         color = palette.secondary, fontSize = 13.sp)
                     Spacer(Modifier.height(8.dp))
-                    Text("В файле: ${preview.tasks.size} дел, из них ${preview.tasks.count { it.deletedAt != null }} в корзине.\nСейчас: ${tasks.size} дел. Новых в файле: $newCount.",
+                    Text("В файле: ${preview.tasks.size} записей, из них ${preview.tasks.count { it.list == TaskList.SHOPPING }} покупок.\nСейчас: ${tasks.size} записей. Новых в файле: $newCount.",
                         color = palette.secondary, fontSize = 14.sp, lineHeight = 21.sp)
                     Spacer(Modifier.height(24.dp))
                     Button(
@@ -758,8 +787,8 @@ fun SvalkaScreen(
 
     if (replaceConfirmation && backupPreview != null) AlertDialog(
         onDismissRequest = { replaceConfirmation = false },
-        title = { Text("Заменить все дела?") },
-        text = { Text("Текущий список и корзина будут заменены содержимым файла. Сохрани копию текущих дел, если они нужны.") },
+        title = { Text("Заменить все записи?") },
+        text = { Text("Дела, покупки и обе корзины будут заменены содержимым файла. Сохрани копию текущих данных, если они нужны.") },
         confirmButton = { TextButton(onClick = { replaceConfirmation = false; onConfirmImport(true) }) { Text("ЗАМЕНИТЬ") } },
         dismissButton = { TextButton(onClick = { replaceConfirmation = false }) { Text("ОТМЕНА") } }
     )

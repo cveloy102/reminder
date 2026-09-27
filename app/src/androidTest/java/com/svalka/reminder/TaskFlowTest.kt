@@ -124,6 +124,23 @@ class TaskFlowTest {
         )
     }
 
+    @Test fun shoppingItemsStayInTheirOwnListAndBackup() {
+        val title = "Молоко ${System.currentTimeMillis()}"
+        rule.onNodeWithTag("tab:shopping").performClick()
+        rule.onNodeWithTag("newTaskInput").performTextInput(title)
+        rule.onNodeWithContentDescription("Добавить покупку").performClick()
+        rule.onNodeWithText(title).assertIsDisplayed()
+        rule.waitUntil(3_000) {
+            TaskStore(rule.activity).load().firstOrNull { it.title == title }?.list == TaskList.SHOPPING
+        }
+        rule.onNodeWithTag("tab:tasks").performClick()
+        rule.onNodeWithText(title).assertDoesNotExist()
+        rule.onNodeWithTag("tab:shopping").performClick()
+        rule.onNodeWithText(title).assertIsDisplayed()
+        val saved = TaskStore(rule.activity).load()
+        check(TaskBackupCodec.decode(TaskBackupCodec.encode(saved)).tasks.first { it.title == title }.list == TaskList.SHOPPING)
+    }
+
     @Test fun connectedCloudFileCanBeSavedAgain() {
         val settings = rule.activity.getSharedPreferences("cloud_backup", android.content.Context.MODE_PRIVATE)
         assumeTrue(settings.contains("uri"))

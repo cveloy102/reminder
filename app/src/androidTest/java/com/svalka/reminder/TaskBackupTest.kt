@@ -35,6 +35,14 @@ class TaskBackupTest {
         assertEquals(5000, decoded.exportedAt)
     }
 
+    @Test fun backupKeepsShoppingSeparateAndReadsOldCopiesAsTasks() {
+        val shopping = ReminderTask("milk", "Молоко", 1000, list = TaskList.SHOPPING)
+        assertEquals(listOf(shopping), TaskBackupCodec.decode(TaskBackupCodec.encode(listOf(shopping))).tasks)
+
+        val oldCopy = """{"app":"com.svalka.reminder","version":1,"exportedAt":2000,"tasks":[{"id":"old","title":"Старое дело","createdAt":1000,"completed":false,"pinned":false,"reminderAt":null,"deletedAt":null}]}"""
+        assertEquals(TaskList.TASKS, TaskBackupCodec.decode(oldCopy).tasks.single().list)
+    }
+
     @Test fun invalidOrDuplicateBackupIsRejected() {
         assertThrows(Exception::class.java) { TaskBackupCodec.decode("[]") }
         val task = ReminderTask("same", "Дело", 1000)

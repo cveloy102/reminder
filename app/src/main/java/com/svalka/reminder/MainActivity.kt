@@ -182,14 +182,16 @@ class MainActivity : ComponentActivity() {
         reminders.schedule(normalized)
     }
 
-    private fun addTask(title: String) {
+    private fun addTask(title: String, list: TaskList) {
         val clean = title.trim()
-        if (clean.isNotEmpty()) save(ReminderTask(UUID.randomUUID().toString(), clean, System.currentTimeMillis()))
+        if (clean.isNotEmpty()) save(ReminderTask(UUID.randomUUID().toString(), clean, System.currentTimeMillis(), list = list))
     }
 
     private fun reorderTasks(fromId: String, toId: String) {
         if (fromId == toId) return
-        val active = orderedActiveTasks(tasks)
+        val source = tasks.firstOrNull { it.id == fromId } ?: return
+        if (tasks.firstOrNull { it.id == toId }?.list != source.list) return
+        val active = orderedActiveTasks(tasks.filter { it.list == source.list })
         val from = active.indexOfFirst { it.id == fromId }
         val to = active.indexOfFirst { it.id == toId }
         if (from < 0 || to < 0 || active[from].completed != active[to].completed) return
@@ -198,7 +200,7 @@ class MainActivity : ComponentActivity() {
             val target = indexOfFirst { it.id == toId }
             add(target + if (from < to) 1 else 0, moved)
         }
-        tasks = reordered + tasks.filter { it.deletedAt != null }
+        tasks = reordered + tasks.filter { it.list != source.list || it.deletedAt != null }
         store.save(tasks)
         saveToCloud(manual = false)
     }
@@ -263,7 +265,7 @@ class MainActivity : ComponentActivity() {
             saveToCloud(manual = false)
             reminders.rescheduleAll(result)
             backupPreview = null
-            Toast.makeText(this, "Дела восстановлены", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Дела и покупки восстановлены", Toast.LENGTH_SHORT).show()
         } catch (error: Exception) {
             Toast.makeText(this, "Не удалось восстановить: ${error.message}", Toast.LENGTH_LONG).show()
         }
