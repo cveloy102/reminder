@@ -5,6 +5,7 @@ import android.app.Notification
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -39,6 +40,9 @@ class ReminderDeliveryTest {
             assertTrue(sound.toString().endsWith("/raw/reminder_signal"))
             context.contentResolver.openInputStream(sound).use { stream ->
                 assertTrue("Звуковой файл канала недоступен", stream != null && stream.read() >= 0)
+            }
+            if (InstrumentationRegistry.getArguments().getString("manualSoundCheck") == "true") {
+                Thread.sleep(30_000)
             }
         } finally {
             scheduler.cancel(id)

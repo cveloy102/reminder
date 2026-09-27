@@ -29,7 +29,13 @@ android {
             initWith(getByName("release"))
             signingConfig = signingConfigs.getByName("debug")
         }
+        create("qa") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".qa"
+            versionNameSuffix = "-qa"
+        }
     }
+    testBuildType = "qa"
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11

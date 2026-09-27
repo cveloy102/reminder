@@ -265,7 +265,7 @@ class TaskFlowTest {
     @Test fun reminderChannelHasPlayableSound() {
         if (Build.VERSION.SDK_INT < 26) return
         val manager = rule.activity.getSystemService(NotificationManager::class.java)
-        val channel = manager.getNotificationChannel("reminders_sound_v2")
+        val channel = manager.getNotificationChannel("reminders_sound_v3")
         check(channel != null && channel.importance >= NotificationManager.IMPORTANCE_DEFAULT)
         check(channel.shouldVibrate())
         val sound = requireNotNull(channel.sound)
