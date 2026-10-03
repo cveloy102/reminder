@@ -43,6 +43,17 @@ class TaskBackupTest {
         assertEquals(TaskList.TASKS, TaskBackupCodec.decode(oldCopy).tasks.single().list)
     }
 
+    @Test fun backupKeepsLinksAndOptionalNames() {
+        val unnamed = ReminderTask("link-one", "example.com", 1000,
+            list = TaskList.LINKS, url = "https://example.com/article")
+        val named = ReminderTask("link-two", "Полезная статья", 2000,
+            list = TaskList.LINKS, url = "https://example.org/read")
+        assertEquals(listOf(unnamed, named),
+            TaskBackupCodec.decode(TaskBackupCodec.encode(listOf(unnamed, named))).tasks)
+        assertEquals("https://example.com/article", normalizeLinkUrl("example.com/article"))
+        assertEquals(null, normalizeLinkUrl("javascript:alert(1)"))
+    }
+
     @Test fun invalidOrDuplicateBackupIsRejected() {
         assertThrows(Exception::class.java) { TaskBackupCodec.decode("[]") }
         val task = ReminderTask("same", "Дело", 1000)

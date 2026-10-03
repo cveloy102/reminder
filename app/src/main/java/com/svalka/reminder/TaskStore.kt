@@ -1,6 +1,7 @@
 package com.svalka.reminder
 
 import android.content.Context
+import android.net.Uri
 import android.util.AtomicFile
 import org.json.JSONArray
 import org.json.JSONObject
@@ -16,7 +17,7 @@ fun normalizeTaskTitle(title: String): String {
 }
 
 enum class TaskList(val storageValue: String) {
-    TASKS("tasks"), SHOPPING("shopping");
+    TASKS("tasks"), SHOPPING("shopping"), LINKS("links");
 
     companion object {
         fun fromStorage(value: String): TaskList = entries.firstOrNull { it.storageValue == value }
@@ -32,11 +33,29 @@ data class ReminderTask(
     val pinned: Boolean = false,
     val reminderAt: Long? = null,
     val deletedAt: Long? = null,
-    val list: TaskList = TaskList.TASKS
+    val list: TaskList = TaskList.TASKS,
+    val url: String? = null
 )
 
+fun normalizeLinkUrl(value: String): String? {
+    val clean = value.trim()
+    if (clean.isEmpty() || clean.any { it.isWhitespace() }) return null
+    val prefix = clean.substringBefore(':')
+    if (':' in clean && "://" !in clean && '.' !in prefix &&
+        prefix.matches(Regex("[A-Za-z][A-Za-z0-9+.-]*"))) return null
+    val candidate = if (clean.contains("://")) clean else "https://$clean"
+    val parsed = Uri.parse(candidate)
+    return candidate.takeIf {
+        parsed.scheme in listOf("http", "https") && !parsed.host.isNullOrBlank()
+    }
+}
+
+fun linkDisplayName(url: String): String =
+    Uri.parse(url).host?.removePrefix("www.") ?: url
+
 fun ReminderTask.normalized(): ReminderTask = copy(
-    title = normalizeTaskTitle(title),
+    title = if (list == TaskList.LINKS && url != null && title == linkDisplayName(url))
+        title else normalizeTaskTitle(title),
     pinned = pinned && !completed
 )
 
@@ -47,9 +66,10 @@ fun orderedActiveTasks(tasks: List<ReminderTask>): List<ReminderTask> =
 class TaskStore(context: Context) {
     private val taskFile = AtomicFile(File(context.filesDir, "tasks.json"))
     private val shoppingFile = AtomicFile(File(context.filesDir, "shopping.json"))
+    private val linksFile = AtomicFile(File(context.filesDir, "links.json"))
 
     fun load(): List<ReminderTask> = loadFrom(taskFile, TaskList.TASKS) +
-        loadFrom(shoppingFile, TaskList.SHOPPING)
+        loadFrom(shoppingFile, TaskList.SHOPPING) + loadFrom(linksFile, TaskList.LINKS)
 
     private fun loadFrom(file: AtomicFile, list: TaskList): List<ReminderTask> = try {
         val json = file.openRead().bufferedReader().use { it.readText() }
@@ -65,7 +85,8 @@ class TaskStore(context: Context) {
                     pinned = item.optBoolean("pinned"),
                     reminderAt = if (item.isNull("reminderAt")) null else item.getLong("reminderAt"),
                     deletedAt = if (item.isNull("deletedAt")) null else item.getLong("deletedAt"),
-                    list = list
+                    list = list,
+                    url = if (item.isNull("url")) null else item.optString("url").takeIf { it.isNotBlank() }
                 ))
             }
         }
@@ -76,6 +97,7 @@ class TaskStore(context: Context) {
     fun save(tasks: List<ReminderTask>) {
         saveTo(taskFile, tasks.filter { it.list == TaskList.TASKS })
         saveTo(shoppingFile, tasks.filter { it.list == TaskList.SHOPPING })
+        saveTo(linksFile, tasks.filter { it.list == TaskList.LINKS })
     }
 
     private fun saveTo(file: AtomicFile, tasks: List<ReminderTask>) {
@@ -90,6 +112,7 @@ class TaskStore(context: Context) {
                 put("reminderAt", task.reminderAt ?: JSONObject.NULL)
                 put("deletedAt", task.deletedAt ?: JSONObject.NULL)
                 put("list", task.list.storageValue)
+                put("url", task.url ?: JSONObject.NULL)
             })
         }
         val stream = file.startWrite()

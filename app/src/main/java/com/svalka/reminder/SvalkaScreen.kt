@@ -1,5 +1,8 @@
 package com.svalka.reminder
 
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -79,6 +82,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -99,6 +103,7 @@ fun SvalkaScreen(
     themeMode: ThemeMode,
     onThemeChange: (ThemeMode) -> Unit,
     onAdd: (String, TaskList) -> Unit,
+    onAddLink: (String, String) -> Unit,
     onUpdate: (ReminderTask) -> Unit,
     onReorder: (String, String) -> Unit,
     onDelete: (ReminderTask) -> Unit,
@@ -124,11 +129,22 @@ fun SvalkaScreen(
     val inputFocusRequester = remember { FocusRequester() }
     var taskInput by rememberSaveable { mutableStateOf("") }
     var shoppingInput by rememberSaveable { mutableStateOf("") }
+    var linkInput by rememberSaveable { mutableStateOf("") }
     var section by rememberSaveable { mutableStateOf(TaskList.TASKS) }
-    val input = if (section == TaskList.TASKS) taskInput else shoppingInput
-    fun updateInput(value: String) {
-        if (section == TaskList.TASKS) taskInput = value else shoppingInput = value
+    val input = when (section) {
+        TaskList.TASKS -> taskInput
+        TaskList.SHOPPING -> shoppingInput
+        TaskList.LINKS -> linkInput
     }
+    fun updateInput(value: String) {
+        when (section) {
+            TaskList.TASKS -> taskInput = value
+            TaskList.SHOPPING -> shoppingInput = value
+            TaskList.LINKS -> linkInput = value
+        }
+    }
+    var pendingLinkUrl by remember { mutableStateOf<String?>(null) }
+    var linkName by remember { mutableStateOf("") }
     var inputFocused by remember { mutableStateOf(false) }
     var draftDialog by remember { mutableStateOf(false) }
     var trash by remember { mutableStateOf(false) }
@@ -196,6 +212,17 @@ fun SvalkaScreen(
 
     fun submit() {
         if (input.isNotBlank()) {
+            if (section == TaskList.LINKS) {
+                val url = normalizeLinkUrl(input)
+                if (url == null) {
+                    Toast.makeText(context, "Вставь адрес сайта или ссылку", Toast.LENGTH_SHORT).show()
+                    return
+                }
+                pendingLinkUrl = url
+                focusManager.clearFocus()
+                keyboardController?.hide()
+                return
+            }
             onAdd(input, section)
             updateInput("")
             focusManager.clearFocus()
@@ -240,7 +267,7 @@ fun SvalkaScreen(
             }
             Spacer(Modifier.height(22.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                listOf(TaskList.TASKS to "ДЕЛА", TaskList.SHOPPING to "ПОКУПКИ").forEach { (list, label) ->
+                listOf(TaskList.TASKS to "ДЕЛА", TaskList.SHOPPING to "ПОКУПКИ", TaskList.LINKS to "ССЫЛКИ").forEach { (list, label) ->
                     Column(Modifier.weight(1f).clickable {
                         section = list
                         draftDialog = false
@@ -259,13 +286,18 @@ fun SvalkaScreen(
             Text(
                 text = if (trash) "Удалённое можно вернуть."
                     else if (section == TaskList.SHOPPING) "Покупок осталось: ${active.count { !it.completed }}."
+                    else if (section == TaskList.LINKS) "Ссылок сохранено: ${active.size}."
                     else "${taskCountLabel(active.count { !it.completed })}. Остальное подождёт.",
                 color = palette.secondary, fontSize = 13.sp
             )
             Spacer(Modifier.height(42.dp))
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    if (trash) "УДАЛЁННЫЕ" else if (section == TaskList.SHOPPING) "СПИСОК / 002" else "СПИСОК / 001",
+                    if (trash) "УДАЛЁННЫЕ" else when (section) {
+                        TaskList.TASKS -> "СПИСОК / 001"
+                        TaskList.SHOPPING -> "СПИСОК / 002"
+                        TaskList.LINKS -> "СПИСОК / 003"
+                    },
                     modifier = Modifier.weight(1f), color = palette.secondary,
                     fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp
                 )
@@ -289,6 +321,7 @@ fun SvalkaScreen(
                     Text(
                         if (trash) "Здесь пока пусто"
                         else if (section == TaskList.SHOPPING) "Здесь пока пусто.\nДобавь первую покупку ↓"
+                        else if (section == TaskList.LINKS) "Здесь пока пусто.\nВставь первую ссылку ↓"
                         else "Здесь пока пусто.\nЗапиши первое дело ↓",
                         color = palette.secondary, textAlign = TextAlign.Center,
                         fontSize = 17.sp, lineHeight = 26.sp
@@ -437,12 +470,25 @@ fun SvalkaScreen(
                 ) {
                     Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
                         if (input.isEmpty()) Text(
-                            if (section == TaskList.SHOPPING) "ДОБАВИТЬ ПОКУПКУ" else "ДОБАВИТЬ ДЕЛО",
+                            when (section) {
+                                TaskList.TASKS -> "ДОБАВИТЬ ДЕЛО"
+                                TaskList.SHOPPING -> "ДОБАВИТЬ ПОКУПКУ"
+                                TaskList.LINKS -> "ВСТАВИТЬ ССЫЛКУ"
+                            },
                             color = palette.accentText,
                             fontSize = 16.sp, fontWeight = FontWeight.ExtraBold
                         )
                         BasicTextField(
-                            value = input, onValueChange = ::updateInput,
+                            value = input, onValueChange = { value ->
+                                val pastedLink = section == TaskList.LINKS && value.length - input.length > 1
+                                    && normalizeLinkUrl(value) != null
+                                updateInput(value)
+                                if (pastedLink) {
+                                    pendingLinkUrl = normalizeLinkUrl(value)
+                                    focusManager.clearFocus()
+                                    keyboardController?.hide()
+                                }
+                            },
                             modifier = Modifier.fillMaxWidth().focusRequester(inputFocusRequester)
                                 .onFocusChanged { inputFocused = it.isFocused }
                                 .testTag("newTaskInput"),
@@ -456,7 +502,11 @@ fun SvalkaScreen(
                     }
                     Box(
                         modifier = Modifier.size(48.dp).clip(RoundedCornerShape(5.dp))
-                            .semantics { contentDescription = if (section == TaskList.SHOPPING) "Добавить покупку" else "Добавить дело" }
+                            .semantics { contentDescription = when (section) {
+                                TaskList.TASKS -> "Добавить дело"
+                                TaskList.SHOPPING -> "Добавить покупку"
+                                TaskList.LINKS -> "Добавить ссылку"
+                            } }
                             .background(palette.accentText).clickable { submit() },
                         contentAlignment = Alignment.Center
                     ) {
@@ -476,6 +526,61 @@ fun SvalkaScreen(
                         )
                         .testTag("draftDismissLayer")
                 )
+            }
+        }
+    }
+
+    pendingLinkUrl?.let { url ->
+        Dialog(onDismissRequest = { pendingLinkUrl = null }) {
+            Surface(shape = RoundedCornerShape(16.dp), color = palette.sheet) {
+                Column(Modifier.fillMaxWidth().padding(24.dp)) {
+                    Text("КАК НАЗВАТЬ ССЫЛКУ?", color = palette.foreground,
+                        fontSize = 23.sp, lineHeight = 28.sp, fontWeight = FontWeight.Black)
+                    Spacer(Modifier.height(10.dp))
+                    Text("Можно оставить без названия — покажем адрес сайта.",
+                        color = palette.secondary, fontSize = 14.sp, lineHeight = 20.sp)
+                    Spacer(Modifier.height(20.dp))
+                    Text(url, color = palette.reminderText, fontSize = 13.sp,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Spacer(Modifier.height(20.dp))
+                    BasicTextField(
+                        value = linkName, onValueChange = { linkName = it },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)
+                            .clip(RoundedCornerShape(8.dp)).background(palette.background)
+                            .border(1.dp, palette.divider, RoundedCornerShape(8.dp))
+                            .padding(16.dp).testTag("linkNameInput"),
+                        singleLine = true,
+                        textStyle = TextStyle(color = palette.foreground, fontSize = 17.sp),
+                        cursorBrush = SolidColor(palette.accent),
+                        decorationBox = { inner ->
+                            Box {
+                                if (linkName.isEmpty()) Text("Название (необязательно)",
+                                    color = palette.secondary, fontSize = 17.sp)
+                                inner()
+                            }
+                        },
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = {
+                            onAddLink(url, linkName)
+                            linkInput = ""
+                            linkName = ""
+                            pendingLinkUrl = null
+                            focusManager.clearFocus()
+                            keyboardController?.hide()
+                        })
+                    )
+                    Spacer(Modifier.height(24.dp))
+                    Button(onClick = {
+                        onAddLink(url, linkName)
+                        linkInput = ""
+                        linkName = ""
+                        pendingLinkUrl = null
+                    }, modifier = Modifier.fillMaxWidth().height(56.dp).testTag("saveLink"),
+                        colors = ButtonDefaults.buttonColors(containerColor = palette.accent,
+                            contentColor = palette.accentText), shape = RoundedCornerShape(8.dp)) {
+                        Text("СОХРАНИТЬ ССЫЛКУ", fontWeight = FontWeight.Black)
+                    }
+                }
             }
         }
     }
@@ -523,6 +628,7 @@ fun SvalkaScreen(
 
     editing?.let { selected ->
         var title by remember(selected.id) { mutableStateOf(selected.title) }
+        var urlText by remember(selected.id) { mutableStateOf(selected.url.orEmpty()) }
         val editorSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ModalBottomSheet(
             onDismissRequest = { editing = null },
@@ -534,17 +640,20 @@ fun SvalkaScreen(
                 .padding(horizontal = 24.dp).padding(bottom = 34.dp)) {
                 Spacer(Modifier.height(28.dp))
                 Text(
-                    if (trash) "ИЗ КОРЗИНЫ" else if (section == TaskList.SHOPPING) "ТВОЯ ПОКУПКА" else "ТВОЯ ЗАМЕТКА",
+                    if (trash) "ИЗ КОРЗИНЫ" else if (section == TaskList.LINKS) "ТВОЯ ССЫЛКА"
+                    else if (section == TaskList.SHOPPING) "ТВОЯ ПОКУПКА" else "ТВОЯ ЗАМЕТКА",
                     color = palette.reminderText, fontSize = 11.sp,
                     fontWeight = FontWeight.Black, letterSpacing = 2.sp
                 )
                 Spacer(Modifier.height(9.dp))
-                Text(if (trash) "Удалённая запись." else if (section == TaskList.SHOPPING) "Редактировать покупку." else "Редактировать дело.",
+                Text(if (trash) "Удалённая запись." else if (section == TaskList.LINKS) "Редактировать ссылку."
+                    else if (section == TaskList.SHOPPING) "Редактировать покупку." else "Редактировать дело.",
                     color = palette.foreground, fontSize = 27.sp, lineHeight = 31.sp,
                     fontWeight = FontWeight.Black, letterSpacing = (-1).sp)
                 Spacer(Modifier.height(28.dp))
                 if (!trash) {
-                    Text(if (section == TaskList.SHOPPING) "ТЕКСТ ПОКУПКИ" else "ТЕКСТ ДЕЛА", color = palette.secondary, fontSize = 11.sp,
+                    Text(if (section == TaskList.LINKS) "НАЗВАНИЕ ССЫЛКИ"
+                        else if (section == TaskList.SHOPPING) "ТЕКСТ ПОКУПКИ" else "ТЕКСТ ДЕЛА", color = palette.secondary, fontSize = 11.sp,
                         fontWeight = FontWeight.Black, letterSpacing = 1.5.sp)
                     Spacer(Modifier.height(10.dp))
                     BasicTextField(
@@ -560,6 +669,29 @@ fun SvalkaScreen(
                         cursorBrush = SolidColor(palette.accent)
                     )
                     Spacer(Modifier.height(25.dp))
+                    if (selected.list == TaskList.LINKS) {
+                        Text("АДРЕС ССЫЛКИ", color = palette.secondary, fontSize = 11.sp,
+                            fontWeight = FontWeight.Black, letterSpacing = 1.5.sp)
+                        Spacer(Modifier.height(10.dp))
+                        BasicTextField(
+                            value = urlText, onValueChange = { urlText = it },
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)
+                                .clip(RoundedCornerShape(12.dp)).background(palette.background)
+                                .border(1.dp, palette.divider, RoundedCornerShape(12.dp))
+                                .padding(18.dp).testTag("editLinkUrl"),
+                            textStyle = TextStyle(color = palette.foreground, fontSize = 16.sp),
+                            cursorBrush = SolidColor(palette.accent)
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        TextButton(onClick = {
+                            val target = selected.url ?: return@TextButton
+                            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(target))) }
+                                .onFailure { Toast.makeText(context, "Не удалось открыть ссылку", Toast.LENGTH_SHORT).show() }
+                        }, modifier = Modifier.align(Alignment.End)) {
+                            Text("ОТКРЫТЬ ССЫЛКУ ↗", color = palette.reminderText,
+                                fontSize = 12.sp, fontWeight = FontWeight.Black)
+                        }
+                    } else {
                     Text("НАПОМИНАНИЕ", color = palette.secondary, fontSize = 11.sp,
                         fontWeight = FontWeight.Black, letterSpacing = 1.5.sp)
                     Spacer(Modifier.height(10.dp))
@@ -591,11 +723,22 @@ fun SvalkaScreen(
                         Text("УБРАТЬ НАПОМИНАНИЕ", color = palette.secondary, fontSize = 11.sp,
                             fontWeight = FontWeight.Bold)
                     }
+                    }
                     Spacer(Modifier.height(26.dp))
                     HorizontalDivider(color = palette.divider)
                     Spacer(Modifier.height(22.dp))
                     Button(
-                        onClick = { if (title.isNotBlank()) onUpdate(selected.copy(title = title)); editing = null },
+                        onClick = {
+                            if (selected.list == TaskList.LINKS) {
+                                val normalizedUrl = normalizeLinkUrl(urlText)
+                                if (normalizedUrl == null) {
+                                    Toast.makeText(context, "Проверь адрес ссылки", Toast.LENGTH_SHORT).show()
+                                    return@Button
+                                }
+                                onUpdate(selected.copy(title = title.trim().ifEmpty { linkDisplayName(normalizedUrl) }, url = normalizedUrl))
+                            } else if (title.isNotBlank()) onUpdate(selected.copy(title = title))
+                            editing = null
+                        },
                         modifier = Modifier.fillMaxWidth().height(58.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = palette.accent, contentColor = palette.accentText),
                         shape = RoundedCornerShape(10.dp)
@@ -762,7 +905,7 @@ fun SvalkaScreen(
                     Text("Копия от ${SimpleDateFormat("d MMM yyyy, HH:mm", Locale.forLanguageTag("ru-RU")).format(Date(preview.exportedAt))}",
                         color = palette.secondary, fontSize = 13.sp)
                     Spacer(Modifier.height(8.dp))
-                    Text("В файле: ${preview.tasks.size} записей, из них ${preview.tasks.count { it.list == TaskList.SHOPPING }} покупок.\nСейчас: ${tasks.size} записей. Новых в файле: $newCount.",
+                    Text("В файле: ${preview.tasks.size} записей, из них ${preview.tasks.count { it.list == TaskList.SHOPPING }} покупок и ${preview.tasks.count { it.list == TaskList.LINKS }} ссылок.\nСейчас: ${tasks.size} записей. Новых в файле: $newCount.",
                         color = palette.secondary, fontSize = 14.sp, lineHeight = 21.sp)
                     Spacer(Modifier.height(24.dp))
                     Button(
@@ -822,11 +965,17 @@ private fun TaskRow(
     ) {
         Box(
             modifier = Modifier.size(48.dp)
-                .semantics { contentDescription = if (task.completed) "Вернуть дело: ${task.title}" else "Вычеркнуть дело: ${task.title}" }
-                .clickable(enabled = !inTrash, onClick = onToggle),
+                .semantics { contentDescription = when {
+                    task.list == TaskList.LINKS -> "Ссылка: ${task.title}"
+                    task.completed -> "Вернуть дело: ${task.title}"
+                    else -> "Вычеркнуть дело: ${task.title}"
+                } }
+                .clickable(enabled = !inTrash && task.list != TaskList.LINKS, onClick = onToggle),
             contentAlignment = Alignment.CenterStart
         ) {
-            Box(
+            if (task.list == TaskList.LINKS) {
+                Text("↗", color = palette.reminderText, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+            } else Box(
                 modifier = Modifier.size(23.dp).clip(RoundedCornerShape(4.dp))
                     .background(if (task.completed) palette.accent else Color.Transparent)
                     .border(2.dp, if (task.completed) palette.accent else palette.foreground, RoundedCornerShape(4.dp)),
@@ -847,6 +996,11 @@ private fun TaskRow(
                 fontSize = 18.sp, lineHeight = 23.sp, fontWeight = FontWeight.SemiBold,
                 textDecoration = if (task.completed) TextDecoration.LineThrough else TextDecoration.None
             )
+            if (task.list == TaskList.LINKS && task.url != null) {
+                Spacer(Modifier.height(5.dp))
+                Text(task.url, color = palette.secondary, fontSize = 12.sp,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
             reminderText?.let {
                 Spacer(Modifier.height(5.dp))
                 Text(

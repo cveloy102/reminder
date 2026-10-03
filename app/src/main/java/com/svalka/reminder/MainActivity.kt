@@ -136,6 +136,7 @@ class MainActivity : ComponentActivity() {
                         getSharedPreferences("settings", MODE_PRIVATE).edit().putString("theme", mode.name).apply()
                     },
                     onAdd = ::addTask,
+                    onAddLink = ::addLink,
                     onUpdate = ::save,
                     onReorder = ::reorderTasks,
                     onDelete = ::deletePermanently,
@@ -210,6 +211,18 @@ class MainActivity : ComponentActivity() {
         exportFile.launch("svalka-$date.json")
     }
 
+    private fun addLink(url: String, title: String) {
+        val normalizedUrl = normalizeLinkUrl(url) ?: return
+        val name = title.trim().ifEmpty { linkDisplayName(normalizedUrl) }
+        save(ReminderTask(
+            id = UUID.randomUUID().toString(),
+            title = name,
+            createdAt = System.currentTimeMillis(),
+            list = TaskList.LINKS,
+            url = normalizedUrl
+        ))
+    }
+
     private fun saveToCloud(manual: Boolean) {
         val target = cloudFile ?: return
         pendingAutoSave?.cancel()
@@ -265,7 +278,7 @@ class MainActivity : ComponentActivity() {
             saveToCloud(manual = false)
             reminders.rescheduleAll(result)
             backupPreview = null
-            Toast.makeText(this, "Дела и покупки восстановлены", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Дела, покупки и ссылки восстановлены", Toast.LENGTH_SHORT).show()
         } catch (error: Exception) {
             Toast.makeText(this, "Не удалось восстановить: ${error.message}", Toast.LENGTH_LONG).show()
         }

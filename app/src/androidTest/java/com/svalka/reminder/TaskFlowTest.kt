@@ -141,6 +141,38 @@ class TaskFlowTest {
         check(TaskBackupCodec.decode(TaskBackupCodec.encode(saved)).tasks.first { it.title == title }.list == TaskList.SHOPPING)
     }
 
+    @Test fun pastedLinkAsksForOptionalNameAndStaysInLinks() {
+        val suffix = System.currentTimeMillis()
+        val url = "https://example.com/read/$suffix"
+        val title = "Полезная ссылка $suffix"
+        rule.onNodeWithTag("tab:links").performClick()
+        rule.onNodeWithTag("newTaskInput").performTextInput(url)
+        rule.onNodeWithText("КАК НАЗВАТЬ ССЫЛКУ?").assertIsDisplayed()
+        rule.onNodeWithTag("linkNameInput").performTextInput(title)
+        rule.onNodeWithTag("saveLink").performClick()
+        rule.onNodeWithText(title).assertIsDisplayed()
+        rule.waitUntil(3_000) {
+            TaskStore(rule.activity).load().any { it.title == title && it.url == url && it.list == TaskList.LINKS }
+        }
+        rule.onNodeWithTag("tab:tasks").performClick()
+        rule.onNodeWithText(title).assertDoesNotExist()
+        rule.onNodeWithTag("tab:links").performClick()
+        rule.onNodeWithText(title).performClick()
+        rule.onNodeWithText("ОТКРЫТЬ ССЫЛКУ", substring = true).assertIsDisplayed()
+        rule.onNodeWithText("СОХРАНИТЬ ИЗМЕНЕНИЯ").performClick()
+
+        val secondUrl = "https://example.org/article/$suffix"
+        rule.onNodeWithTag("newTaskInput").performTextInput(secondUrl)
+        rule.onNodeWithText("КАК НАЗВАТЬ ССЫЛКУ?").assertIsDisplayed()
+        rule.onNodeWithTag("saveLink").performClick()
+        rule.onNodeWithText("example.org").assertIsDisplayed()
+        rule.waitUntil(3_000) {
+            TaskStore(rule.activity).load().any {
+                it.title == "example.org" && it.url == secondUrl && it.list == TaskList.LINKS
+            }
+        }
+    }
+
     @Test fun connectedCloudFileCanBeSavedAgain() {
         val settings = rule.activity.getSharedPreferences("cloud_backup", android.content.Context.MODE_PRIVATE)
         assumeTrue(settings.contains("uri"))
