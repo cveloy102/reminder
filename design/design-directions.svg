@@ -1,0 +1,126 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="970" viewBox="0 0 1440 970">
+  <defs>
+    <style>
+      text{font-family:'Segoe UI',Arial,sans-serif} .small{font-size:13px}.body{font-size:17px}.muted{fill:#858b82}.white{fill:#f8f9f3}.rule{stroke-width:1}.label{font-size:21px;font-weight:700;letter-spacing:-.5px}.desc{font-size:13px;fill:#6d746f}
+    </style>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="170%"><feDropShadow dx="0" dy="18" stdDeviation="19" flood-color="#243127" flood-opacity=".18"/></filter>
+    <path id="trash" d="M1 3h16M6 1h6M4 5l1 13h10l1-13M8 8v7m4-7v7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+  </defs>
+  <rect width="1440" height="970" fill="#eceee9"/>
+  <text x="720" y="53" text-anchor="middle" font-size="12" font-weight="700" letter-spacing="3" fill="#788079">REMINDER · DESIGN STUDY 01</text>
+  <text x="720" y="93" text-anchor="middle" font-size="32" font-weight="700" letter-spacing="-1" fill="#232825">Одна идея. Три характера.</text>
+  <text x="720" y="120" text-anchor="middle" font-size="15" fill="#737a74">Главный экран: записать, вычеркнуть, назначить время, удалить.</text>
+
+  <!-- 01 Paper -->
+  <g transform="translate(75 155)">
+    <rect width="390" height="710" rx="42" fill="#343935" filter="url(#shadow)"/>
+    <rect x="7" y="7" width="376" height="696" rx="36" fill="#f7f6f0"/>
+    <rect x="155" y="18" width="80" height="23" rx="12" fill="#343935"/>
+    <text x="30" y="38" class="small" font-weight="700" fill="#3c423a">9:41</text>
+    <text x="318" y="38" class="small" fill="#3c423a">● ● ▰</text>
+    <text x="30" y="113" font-family="Georgia,serif" font-size="39" letter-spacing="-2" fill="#252a25">свалка.</text>
+    <g transform="translate(336 83)" color="#59635a"><use href="#trash"/></g>
+    <text x="30" y="140" class="small muted">Место для всего, что не хочется забыть.</text>
+    <text x="30" y="223" font-size="12" font-weight="700" letter-spacing="2" fill="#343d35">ВСЁ, ЧТО В ГОЛОВЕ</text>
+    <text x="316" y="223" class="small muted">3 дела</text>
+    <line x1="30" x2="360" y1="244" y2="244" stroke="#dedfd7"/>
+    <circle cx="43" cy="272" r="10" fill="none" stroke="#8e988a" stroke-width="2"/>
+    <text x="70" y="278" class="body" fill="#252a25">Купить кофе</text>
+    <line x1="30" x2="360" y1="309" y2="309" stroke="#dedfd7"/>
+    <circle cx="43" cy="339" r="10" fill="none" stroke="#8e988a" stroke-width="2"/>
+    <text x="70" y="345" class="body" fill="#252a25">Записаться к стоматологу</text>
+    <text x="70" y="367" class="small" fill="#7c8977">◷  Завтра, 10:00</text>
+    <line x1="30" x2="360" y1="393" y2="393" stroke="#dedfd7"/>
+    <circle cx="43" cy="423" r="10" fill="none" stroke="#8e988a" stroke-width="2"/>
+    <text x="70" y="429" class="body" fill="#252a25">Отправить документы</text>
+    <text x="70" y="451" class="small" fill="#7c8977">◷  28 сентября, 13:30</text>
+    <line x1="30" x2="360" y1="477" y2="477" stroke="#dedfd7"/>
+    <circle cx="43" cy="506" r="10" fill="#81957f"/>
+    <text x="38" y="511" font-size="14" fill="white">✓</text>
+    <text x="70" y="512" class="body" fill="#a6ada3" text-decoration="line-through">Забрать посылку</text>
+    <rect x="24" y="604" width="342" height="65" rx="18" fill="white" stroke="#e4e8dd"/>
+    <text x="43" y="645" font-size="16" fill="#8b9188">Записать мысль...</text>
+    <circle cx="326" cy="637" r="23" fill="#71846e"/>
+    <text x="326" y="647" text-anchor="middle" font-size="29" font-weight="300" fill="white">+</text>
+    <rect x="143" y="688" width="104" height="4" rx="3" fill="#252a25"/>
+  </g>
+  <text x="77" y="905" class="label" fill="#222822">01 / Тихий лист</text>
+  <text x="77" y="930" class="desc">Тёплый, спокойный, личный.</text>
+
+  <!-- 02 Mono -->
+  <g transform="translate(525 155)">
+    <rect width="390" height="710" rx="42" fill="#151719" filter="url(#shadow)"/>
+    <rect x="155" y="18" width="80" height="23" rx="12" fill="#080909"/>
+    <text x="30" y="38" class="small white" font-weight="700">9:41</text>
+    <text x="318" y="38" class="small white">● ● ▰</text>
+    <text x="29" y="115" font-size="40" font-weight="900" letter-spacing="-3" fill="#f8f9f3">СВАЛКА</text>
+    <text x="29" y="153" font-size="40" font-weight="900" letter-spacing="-3" fill="#f8f9f3">ВСЕГО.</text>
+    <circle cx="341" cy="91" r="19" fill="none" stroke="#747971"/>
+    <g transform="translate(332 82)" color="#f8f9f3"><use href="#trash"/></g>
+    <text x="30" y="189" class="small" fill="#dfff71">03 дела.</text>
+    <text x="92" y="189" class="small" fill="#afb4ac">Остальное подождёт.</text>
+    <text x="30" y="267" font-size="11" letter-spacing="2" font-weight="700" fill="#a7aca4">СПИСОК / 001</text>
+    <text x="308" y="267" font-size="11" letter-spacing="2" font-weight="700" fill="#a7aca4">СЕГОДНЯ</text>
+    <line x1="30" x2="360" y1="286" y2="286" stroke="#434746"/>
+    <rect x="32" y="308" width="21" height="21" rx="4" fill="none" stroke="#d6d9ce" stroke-width="2"/>
+    <text x="72" y="325" font-size="18" font-weight="600" fill="#f8f9f3">Купить кофе</text>
+    <line x1="30" x2="360" y1="353" y2="353" stroke="#434746"/>
+    <rect x="32" y="377" width="21" height="21" rx="4" fill="none" stroke="#d6d9ce" stroke-width="2"/>
+    <text x="72" y="395" font-size="18" font-weight="600" fill="#f8f9f3">Записаться к стоматологу</text>
+    <text x="72" y="418" font-size="12" fill="#dfff71">↗  ЗАВТРА · 10:00</text>
+    <line x1="30" x2="360" y1="442" y2="442" stroke="#434746"/>
+    <rect x="32" y="466" width="21" height="21" rx="4" fill="none" stroke="#d6d9ce" stroke-width="2"/>
+    <text x="72" y="484" font-size="18" font-weight="600" fill="#f8f9f3">Отправить документы</text>
+    <text x="72" y="507" font-size="12" fill="#dfff71">↗  28 СЕН · 13:30</text>
+    <line x1="30" x2="360" y1="531" y2="531" stroke="#434746"/>
+    <rect x="32" y="555" width="21" height="21" rx="4" fill="#8c9d52"/>
+    <text x="37" y="572" font-size="15" fill="#151719">✓</text>
+    <text x="72" y="573" font-size="18" fill="#777d77" text-decoration="line-through">Забрать посылку</text>
+    <rect x="28" y="612" width="334" height="58" rx="7" fill="#dfff71"/>
+    <text x="46" y="648" font-size="16" font-weight="800" fill="#192015">ДОБАВИТЬ ДЕЛО</text>
+    <rect x="305" y="619" width="44" height="44" rx="4" fill="#171b15"/>
+    <text x="327" y="650" text-anchor="middle" font-size="27" fill="#dfff71">+</text>
+    <rect x="143" y="688" width="104" height="4" rx="3" fill="#f5f6f2"/>
+  </g>
+  <text x="527" y="905" class="label" fill="#222822">02 / Чёрный маркер</text>
+  <text x="527" y="930" class="desc">Контрастный, энергичный, дерзкий.</text>
+
+  <!-- 03 Soft -->
+  <g transform="translate(975 155)">
+    <rect width="390" height="710" rx="42" fill="#363145" filter="url(#shadow)"/>
+    <rect x="7" y="7" width="376" height="696" rx="36" fill="#f5f3fb"/>
+    <rect x="155" y="18" width="80" height="23" rx="12" fill="#363145"/>
+    <text x="30" y="38" class="small" font-weight="700" fill="#3e3a4f">9:41</text>
+    <text x="318" y="38" class="small" fill="#3e3a4f">● ● ▰</text>
+    <text x="25" y="111" font-size="30" font-weight="750" letter-spacing="-1.5" fill="#27243b">Моя свалка</text>
+    <circle cx="342" cy="99" r="20" fill="#eae5f5"/>
+    <g transform="translate(333 90)" color="#5b536b"><use href="#trash"/></g>
+    <text x="25" y="138" class="small" fill="#7b748e">Сегодня можно просто записать.</text>
+    <rect x="24" y="177" width="72" height="34" rx="17" fill="#62537d"/>
+    <text x="40" y="199" font-size="12" font-weight="700" fill="white">Все · 3</text>
+    <rect x="102" y="177" width="150" height="34" rx="17" fill="#e9e4f2"/>
+    <text x="116" y="199" font-size="12" font-weight="700" fill="#69617b">С напоминанием</text>
+    <rect x="20" y="232" width="350" height="67" rx="18" fill="white"/>
+    <circle cx="48" cy="266" r="10" fill="none" stroke="#9e91b5" stroke-width="2"/>
+    <text x="74" y="272" font-size="16" font-weight="600" fill="#27243b">Купить кофе</text>
+    <rect x="20" y="308" width="350" height="84" rx="18" fill="white"/>
+    <circle cx="48" cy="341" r="10" fill="none" stroke="#9e91b5" stroke-width="2"/>
+    <text x="74" y="347" font-size="16" font-weight="600" fill="#27243b">Записаться к стоматологу</text>
+    <text x="74" y="371" class="small" fill="#81709d">◷  Завтра в 10:00</text>
+    <rect x="20" y="401" width="350" height="84" rx="18" fill="white"/>
+    <circle cx="48" cy="434" r="10" fill="none" stroke="#9e91b5" stroke-width="2"/>
+    <text x="74" y="440" font-size="16" font-weight="600" fill="#27243b">Отправить документы</text>
+    <text x="74" y="464" class="small" fill="#81709d">◷  28 сентября в 13:30</text>
+    <rect x="20" y="494" width="350" height="67" rx="18" fill="white" opacity=".65"/>
+    <circle cx="48" cy="528" r="10" fill="#9a89b3"/>
+    <text x="43" y="533" font-size="14" fill="white">✓</text>
+    <text x="74" y="534" font-size="16" fill="#a59dac" text-decoration="line-through">Забрать посылку</text>
+    <rect x="20" y="608" width="350" height="62" rx="31" fill="white"/>
+    <text x="40" y="646" font-size="15" fill="#928b9f">Что запомнить?</text>
+    <circle cx="333" cy="639" r="23" fill="#765c9c"/>
+    <text x="333" y="649" text-anchor="middle" font-size="29" font-weight="300" fill="white">+</text>
+    <rect x="143" y="688" width="104" height="4" rx="3" fill="#28243c"/>
+  </g>
+  <text x="977" y="905" class="label" fill="#222822">03 / Мягкий Android</text>
+  <text x="977" y="930" class="desc">Плавный, дружелюбный, привычный.</text>
+</svg>

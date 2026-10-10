@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Свалка — три направления дизайна</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0;background:#e9e9e6;color:#222;font-family:"Segoe UI",Arial,sans-serif}.board{width:1440px;height:990px;margin:auto;padding:48px 70px 36px;background:radial-gradient(circle at 50% 0%,#f6f6f2,#e6e7e2 74%)}.intro{text-align:center;height:101px}.intro .eyebrow{font-size:12px;letter-spacing:.22em;font-weight:700;color:#777e7a}.intro h1{margin:8px 0 4px;font-size:31px;letter-spacing:-.045em;font-weight:650}.intro p{margin:0;color:#747a76;font-size:15px}.grid{display:flex;justify-content:space-between;gap:30px}.concept{width:390px}.phone{position:relative;width:390px;height:762px;overflow:hidden;border-radius:43px;border:7px solid #242729;box-shadow:0 25px 52px #24312726,0 4px 12px #24312718}.phone:before{content:"";position:absolute;z-index:10;top:12px;left:50%;transform:translateX(-50%);width:77px;height:24px;background:#242729;border-radius:22px}.status{height:46px;padding:14px 30px 0;display:flex;justify-content:space-between;font-size:12px;font-weight:650;letter-spacing:.01em}.status .right{display:flex;gap:6px;align-items:center}.battery{width:17px;height:9px;border:1.5px solid currentColor;border-radius:3px;position:relative}.battery:before{content:"";position:absolute;background:currentColor;inset:2px 3px 2px 2px;border-radius:1px}.battery:after{content:"";position:absolute;width:2px;height:4px;background:currentColor;right:-4px;top:1px;border-radius:1px}.navline{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);width:105px;height:4px;border-radius:5px;background:currentColor;opacity:.72}.concept-title{font-size:21px;font-weight:700;letter-spacing:-.03em;margin:18px 2px 4px}.concept-desc{color:#6d746f;font-size:13px;line-height:1.35;margin:0 2px}.trash{border:0;background:transparent;padding:0;display:grid;place-items:center;width:40px;height:40px;border-radius:50%;font-size:20px}.task{display:flex;align-items:flex-start;gap:14px}.check{flex:none;width:22px;height:22px;border:1.7px solid currentColor;border-radius:50%;margin-top:2px}.task-copy{flex:1}.task-name{font-size:17px;line-height:1.3;letter-spacing:-.02em}.task-date{font-size:12px;margin-top:6px}.done .task-name{text-decoration:line-through}.composer{position:absolute;left:20px;right:20px;bottom:25px;display:flex;align-items:center;justify-content:space-between}.add{display:grid;place-items:center;font-size:28px;line-height:1;width:44px;height:44px;border-radius:50%;font-weight:300}.caption{font-size:11px;letter-spacing:.13em;text-transform:uppercase;font-weight:700}
+    /* 01: warm editorial */
+    .paper{background:#f7f6f0;color:#252a25;border-color:#343935}.paper .status{color:#383d38}.paper .header{display:flex;justify-content:space-between;align-items:center;margin:17px 29px 0}.paper .brand{font-family:Georgia,serif;font-size:38px;letter-spacing:-.07em;line-height:1}.paper .trash{color:#606760}.paper .sub{margin:12px 29px 0;color:#82887f;font-size:13px}.paper .section{display:flex;align-items:center;justify-content:space-between;margin:49px 29px 23px;font-size:12px;letter-spacing:.14em;font-weight:750}.paper .section span:last-child{color:#969b93;letter-spacing:0;font-size:13px}.paper .tasks{margin:0 29px}.paper .task{padding:18px 0 19px;border-top:1px solid #dddfd6}.paper .task:first-child{border-top:0}.paper .check{color:#8e988a}.paper .task-date{color:#808b79}.paper .done{opacity:.43}.paper .done .check{background:#81957f;border-color:#81957f;position:relative}.paper .done .check:after{content:"✓";color:white;font-size:14px;position:absolute;top:-2px;left:4px}.paper .composer{background:#fff;box-shadow:0 5px 22px #303c2917;border:1px solid #e4e8dd;border-radius:18px;height:65px;padding:0 10px 0 19px;color:#8b9188}.paper .add{background:#71846e;color:#fff}.paper .navline{color:#252a25}
+    /* 02: graphic monochrome */
+    .mono{background:#151719;color:#fafbf7;border-color:#151719}.mono .status{color:#f7f8ef}.mono .header{margin:18px 28px 0}.mono .toprow{display:flex;justify-content:space-between;align-items:flex-start}.mono .brand{font-size:41px;line-height:.9;font-weight:900;letter-spacing:-.075em}.mono .trash{color:#e1e4d9;border:1px solid #5f6260;width:37px;height:37px}.mono .summary{margin-top:25px;color:#b0b4ad;font-size:13px}.mono .summary strong{color:#ddff69;font-weight:600}.mono .section{margin:52px 28px 15px;display:flex;justify-content:space-between;color:#a6aaa3}.mono .section .caption{font-size:11px}.mono .tasks{margin:0 28px}.mono .task{padding:21px 0;border-top:1px solid #424646;gap:18px}.mono .check{border-radius:5px;border-color:#d6d9ce}.mono .task-name{font-weight:550;font-size:18px}.mono .task-date{color:#d5f68b}.mono .done{opacity:.42}.mono .done .check{background:#ddff69;border-color:#ddff69;position:relative}.mono .done .check:after{content:"✓";color:#151719;font-size:17px;position:absolute;top:-3px;left:3px}.mono .composer{background:#dfff71;color:#1b2112;border-radius:7px;height:65px;left:28px;right:28px;padding:0 12px 0 17px;font-size:17px;font-weight:700;letter-spacing:-.025em}.mono .add{color:#dfff71;background:#171b15;border-radius:4px}.mono .navline{color:#f5f6f2}
+    /* 03: soft Material */
+    .soft{background:#f5f3fb;color:#27243b;border-color:#363145}.soft .status{color:#3e3a4f}.soft .header{display:flex;justify-content:space-between;align-items:center;margin:20px 24px 0}.soft .brand{font-size:30px;font-weight:750;letter-spacing:-.055em}.soft .trash{background:#eae5f5;color:#5b536b}.soft .sub{margin:8px 25px 0;color:#7b748e;font-size:13px}.soft .chips{display:flex;gap:7px;margin:34px 24px 20px}.soft .chip{padding:9px 14px;border-radius:30px;background:#e9e4f2;color:#69617b;font-size:12px;font-weight:650}.soft .chip.active{background:#62537d;color:#fff}.soft .tasks{margin:0 20px;display:flex;flex-direction:column;gap:9px}.soft .task{background:#fff;border-radius:18px;padding:17px 15px;box-shadow:0 3px 12px #5144750c;gap:12px}.soft .check{color:#9e91b5}.soft .task-name{font-size:16px;font-weight:550}.soft .task-date{color:#81709d}.soft .done{opacity:.55}.soft .done .check{background:#9a89b3;border-color:#9a89b3;position:relative}.soft .done .check:after{content:"✓";color:white;font-size:14px;position:absolute;top:-2px;left:4px}.soft .composer{height:62px;background:#fff;border-radius:32px;padding:0 8px 0 18px;box-shadow:0 5px 18px #5144751a;color:#928b9f;font-size:15px}.soft .add{background:#765c9c;color:#fff}.soft .navline{color:#28243c}
+  </style>
+</head>
+<body>
+  <div class="board">
+    <header class="intro"><div class="eyebrow">REMINDER · DESIGN STUDY 01</div><h1>Одна идея. Три характера.</h1><p>Главный экран: записать, вычеркнуть, назначить время, удалить.</p></header>
+    <main class="grid">
+      <section class="concept">
+        <div class="phone paper">
+          <div class="status"><span>9:41</span><span class="right">● ● ● <span class="battery"></span></span></div>
+          <div class="header"><div class="brand">свалка.</div><button class="trash" aria-label="Корзина">♧</button></div>
+          <div class="sub">Место для всего, что не хочется забыть.</div>
+          <div class="section"><span>ВСЁ, ЧТО В ГОЛОВЕ</span><span>3 дела</span></div>
+          <div class="tasks">
+            <div class="task"><span class="check"></span><div class="task-copy"><div class="task-name">Купить кофе</div></div></div>
+            <div class="task"><span class="check"></span><div class="task-copy"><div class="task-name">Записаться к стоматологу</div><div class="task-date">◷ Завтра, 10:00</div></div></div>
+            <div class="task"><span class="check"></span><div class="task-copy"><div class="task-name">Отправить документы</div><div class="task-date">◷ 28 сентября, 13:30</div></div></div>
+            <div class="task done"><span class="check"></span><div class="task-copy"><div class="task-name">Забрать посылку</div></div></div>
+          </div>
+          <div class="composer"><span>Записать мысль...</span><span class="add">+</span></div><div class="navline"></div>
+        </div>
+        <h2 class="concept-title">01 / Тихий лист</h2><p class="concept-desc">Тёплый, спокойный, с ощущением личного пространства.</p>
+      </section>
+      <section class="concept">
+        <div class="phone mono">
+          <div class="status"><span>9:41</span><span class="right">● ● ● <span class="battery"></span></span></div>
+          <div class="header"><div class="toprow"><div class="brand">СВАЛКА<br>ВСЕГО.</div><button class="trash" aria-label="Корзина">♧</button></div><div class="summary"><strong>03 дела.</strong> Остальное подождёт.</div></div>
+          <div class="section"><span class="caption">СПИСОК / 001</span><span class="caption">СЕГОДНЯ</span></div>
+          <div class="tasks">
+            <div class="task"><span class="check"></span><div class="task-copy"><div class="task-name">Купить кофе</div></div></div>
+            <div class="task"><span class="check"></span><div class="task-copy"><div class="task-name">Записаться к стоматологу</div><div class="task-date">↗ ЗАВТРА · 10:00</div></div></div>
+            <div class="task"><span class="check"></span><div class="task-copy"><div class="task-name">Отправить документы</div><div class="task-date">↗ 28 СЕН · 13:30</div></div></div>
+            <div class="task done"><span class="check"></span><div class="task-copy"><div class="task-name">Забрать посылку</div></div></div>
+          </div>
+          <div class="composer"><span>ДОБАВИТЬ ДЕЛО</span><span class="add">+</span></div><div class="navline"></div>
+        </div>
+        <h2 class="concept-title">02 / Чёрный маркер</h2><p class="concept-desc">Контраст, крупный текст и немного дерзости.</p>
+      </section>
+      <section class="concept">
+        <div class="phone soft">
+          <div class="status"><span>9:41</span><span class="right">● ● ● <span class="battery"></span></span></div>
+          <div class="header"><div class="brand">Моя свалка</div><button class="trash" aria-label="Корзина">♧</button></div>
+          <div class="sub">Сегодня можно просто записать.</div>
+          <div class="chips"><span class="chip active">Все · 3</span><span class="chip">С напоминанием</span></div>
+          <div class="tasks">
+            <div class="task"><span class="check"></span><div class="task-copy"><div class="task-name">Купить кофе</div></div></div>
+            <div class="task"><span class="check"></span><div class="task-copy"><div class="task-name">Записаться к стоматологу</div><div class="task-date">◷ Завтра в 10:00</div></div></div>
+            <div class="task"><span class="check"></span><div class="task-copy"><div class="task-name">Отправить документы</div><div class="task-date">◷ 28 сентября в 13:30</div></div></div>
+            <div class="task done"><span class="check"></span><div class="task-copy"><div class="task-name">Забрать посылку</div></div></div>
+          </div>
+          <div class="composer"><span>Что запомнить?</span><span class="add">+</span></div><div class="navline"></div>
+        </div>
+        <h2 class="concept-title">03 / Мягкий Android</h2><p class="concept-desc">Плавные формы, спокойный цвет и знакомые жесты.</p>
+      </section>
+    </main>
+  </div>
+</body>
+</html>
