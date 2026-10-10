@@ -291,7 +291,7 @@ fun SvalkaScreen(
                         fontWeight = FontWeight.Black)
                 }
                 Spacer(Modifier.height(20.dp).fillMaxWidth().testTag("emptyTapArea"))
-                Text("[ ${when (section) { TaskList.TASKS -> "01 / ДЕЛА"; TaskList.SHOPPING -> "02 / ПОКУПКИ"; TaskList.LINKS -> "03 / ССЫЛКИ" }} ]",
+                Text("[ ${when (section) { TaskList.TASKS -> if (visualStyle == VisualStyle.TERMINAL) "ДЕЛА" else "01 / ДЕЛА"; TaskList.SHOPPING -> if (visualStyle == VisualStyle.TERMINAL) "ПОКУПКИ" else "02 / ПОКУПКИ"; TaskList.LINKS -> if (visualStyle == VisualStyle.TERMINAL) "ССЫЛКИ" else "03 / ССЫЛКИ" }} ]",
                     color = palette.accent, fontSize = 11.sp, letterSpacing = 1.5.sp,
                     fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(12.dp))
@@ -331,9 +331,9 @@ fun SvalkaScreen(
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     if (trash) "УДАЛЁННЫЕ" else when (section) {
-                        TaskList.TASKS -> if (visualStyle == VisualStyle.LEGACY) "СПИСОК / 001" else "СПИСОК / 01"
-                        TaskList.SHOPPING -> if (visualStyle == VisualStyle.LEGACY) "СПИСОК / 002" else "СПИСОК / 02"
-                        TaskList.LINKS -> if (visualStyle == VisualStyle.LEGACY) "СПИСОК / 003" else "СПИСОК / 03"
+                        TaskList.TASKS -> if (visualStyle == VisualStyle.LEGACY) "СПИСОК / 001" else if (visualStyle == VisualStyle.TERMINAL) "СПИСОК" else "СПИСОК / 01"
+                        TaskList.SHOPPING -> if (visualStyle == VisualStyle.LEGACY) "СПИСОК / 002" else if (visualStyle == VisualStyle.TERMINAL) "СПИСОК" else "СПИСОК / 02"
+                        TaskList.LINKS -> if (visualStyle == VisualStyle.LEGACY) "СПИСОК / 003" else if (visualStyle == VisualStyle.TERMINAL) "СПИСОК" else "СПИСОК / 03"
                     },
                     modifier = Modifier.weight(1f), color = palette.secondary,
                     fontSize = 11.sp, fontWeight = FontWeight.Bold,
@@ -1048,7 +1048,7 @@ private fun SvalkaTabs(section: TaskList, style: VisualStyle, onSelect: (TaskLis
                     if (style == VisualStyle.TERMINAL) Box(Modifier.fillMaxWidth().height(2.dp)
                         .background(if (section == list) palette.accent else palette.divider))
                     Spacer(Modifier.height(if (style == VisualStyle.TERMINAL) 9.dp else 4.dp))
-                    Text(if (style == VisualStyle.LEGACY) label else "0${index + 1} $label",
+                    Text(if (style != VisualStyle.SIGNAL) label else "0${index + 1} $label",
                         color = if (section == list) palette.foreground else palette.secondary,
                         fontSize = if (style == VisualStyle.LEGACY) 12.sp else 11.sp,
                         maxLines = 1, fontWeight = FontWeight.Black,
