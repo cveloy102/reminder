@@ -460,7 +460,7 @@ fun SvalkaScreen(
                                 }
                             ) {
                                 TaskRow(
-                                    task = task, inTrash = trash, visualStyle = visualStyle, index = index,
+                                    task = task, inTrash = trash, visualStyle = visualStyle,
                                     onOpen = { editing = task },
                                     onToggle = {
                                         onUpdate(task.copy(completed = !task.completed, pinned = false))
@@ -1066,7 +1066,6 @@ private fun TaskRow(
     task: ReminderTask,
     inTrash: Boolean,
     visualStyle: VisualStyle,
-    index: Int,
     onOpen: () -> Unit,
     onToggle: () -> Unit,
     onPin: () -> Unit,
@@ -1086,10 +1085,6 @@ private fun TaskRow(
                 vertical = if (featured) 18.dp else 19.dp),
         verticalAlignment = if (featured) Alignment.CenterVertically else Alignment.Top
     ) {
-        if (visualStyle == VisualStyle.TERMINAL && !inTrash) {
-            Text("%02d".format(index + 1), color = palette.secondary, fontSize = 11.sp,
-                modifier = Modifier.padding(top = 5.dp, end = 9.dp))
-        }
         Box(
             modifier = Modifier.size(48.dp)
                 .semantics { contentDescription = when {
