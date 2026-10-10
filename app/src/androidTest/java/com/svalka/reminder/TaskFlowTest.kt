@@ -80,14 +80,20 @@ class TaskFlowTest {
     }
 
     @Test fun themeChoiceIsSaved() {
-        rule.onNodeWithText("ТЕМА").performClick()
-        rule.onNodeWithText("Светлая", substring = true).performClick()
+        rule.onNodeWithTag("styleMenu").performClick()
+        rule.onNodeWithTag("mode:light").performClick()
         rule.runOnUiThread {
             val value = rule.activity.getSharedPreferences("settings", 0).getString("theme", null)
             check(value == "LIGHT")
         }
-        rule.onNodeWithText("ТЕМА").performClick()
-        rule.onNodeWithText("Как в системе", substring = true).performClick()
+        rule.onNodeWithTag("style:signal").performClick()
+        rule.runOnUiThread {
+            val value = rule.activity.getSharedPreferences("settings", 0).getString("visual_style", null)
+            check(value == "SIGNAL")
+        }
+        rule.onNodeWithTag("style:terminal").performClick()
+        rule.onNodeWithTag("mode:system").performClick()
+        rule.onNodeWithText("НАЗАД К СПИСКУ ←").performClick()
     }
 
     @Test fun styledReminderPickerSavesDateAndTime() {

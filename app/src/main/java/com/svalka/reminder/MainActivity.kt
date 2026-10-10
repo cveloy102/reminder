@@ -20,6 +20,7 @@ import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
 import com.svalka.reminder.ui.theme.SvalkaTheme
 import com.svalka.reminder.ui.theme.ThemeMode
+import com.svalka.reminder.ui.theme.VisualStyle
 import java.io.ByteArrayOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -39,6 +40,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var reminders: ReminderScheduler
     private var tasks by mutableStateOf<List<ReminderTask>>(emptyList())
     private var themeMode by mutableStateOf(ThemeMode.SYSTEM)
+    private var visualStyle by mutableStateOf(VisualStyle.TERMINAL)
     private var backupPreview by mutableStateOf<TaskBackup?>(null)
     private var cloudFile by mutableStateOf<Uri?>(null)
     private var cloudSaving by mutableStateOf(false)
@@ -109,6 +111,7 @@ class MainActivity : ComponentActivity() {
         tasks = loadedTasks.map { it.normalized() }
         if (tasks != loadedTasks) store.save(tasks)
         themeMode = ThemeMode.fromValue(getSharedPreferences("settings", MODE_PRIVATE).getString("theme", null))
+        visualStyle = VisualStyle.fromValue(getSharedPreferences("settings", MODE_PRIVATE).getString("visual_style", null))
         val cloudSettings = getSharedPreferences("cloud_backup", MODE_PRIVATE)
         cloudFile = cloudSettings.getString("uri", null)?.let(Uri::parse)
             ?.takeIf { saved -> contentResolver.persistedUriPermissions.any { it.uri == saved && it.isWritePermission } }
@@ -127,10 +130,15 @@ class MainActivity : ComponentActivity() {
                     isAppearanceLightNavigationBars = !dark
                 }
             }
-            SvalkaTheme(themeMode) {
+            SvalkaTheme(themeMode, visualStyle) {
                 SvalkaScreen(
                     tasks = tasks,
                     themeMode = themeMode,
+                    visualStyle = visualStyle,
+                    onStyleChange = { style ->
+                        visualStyle = style
+                        getSharedPreferences("settings", MODE_PRIVATE).edit().putString("visual_style", style.name).apply()
+                    },
                     onThemeChange = { mode ->
                         themeMode = mode
                         getSharedPreferences("settings", MODE_PRIVATE).edit().putString("theme", mode.name).apply()
