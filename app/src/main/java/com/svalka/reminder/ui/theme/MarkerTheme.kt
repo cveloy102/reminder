@@ -12,10 +12,6 @@ enum class ThemeMode { SYSTEM, LIGHT, DARK;
     companion object { fun fromValue(value: String?): ThemeMode = entries.firstOrNull { it.name == value } ?: SYSTEM }
 }
 
-enum class VisualStyle { TERMINAL, SIGNAL, LEGACY;
-    companion object { fun fromValue(value: String?): VisualStyle = entries.firstOrNull { it.name == value } ?: TERMINAL }
-}
-
 data class MarkerPalette(
     val background: Color,
     val foreground: Color,
@@ -25,20 +21,6 @@ data class MarkerPalette(
     val accentText: Color,
     val reminderText: Color,
     val sheet: Color
-)
-
-private val legacyDarkPalette = MarkerPalette(
-    background = Color(0xFF151719), foreground = Color(0xFFF8F9F3),
-    secondary = Color(0xFFA6ACA5), divider = Color(0xFF424746),
-    accent = Color(0xFFDFFF71), accentText = Color(0xFF171B15),
-    reminderText = Color(0xFFDFFF71), sheet = Color(0xFF232628)
-)
-
-private val legacyLightPalette = MarkerPalette(
-    background = Color(0xFFF7F8F2), foreground = Color(0xFF171B18),
-    secondary = Color(0xFF626C63), divider = Color(0xFFD6DDD4),
-    accent = Color(0xFFD5ED59), accentText = Color(0xFF182010),
-    reminderText = Color(0xFF365017), sheet = Color(0xFFFFFFFF)
 )
 
 private val terminalDarkPalette = MarkerPalette(
@@ -55,18 +37,15 @@ private val terminalLightPalette = MarkerPalette(
     reminderText = Color(0xFFB92B26), sheet = Color(0xFFFFFDF8)
 )
 
-private val LocalMarkerPalette = staticCompositionLocalOf { legacyDarkPalette }
+private val LocalMarkerPalette = staticCompositionLocalOf { terminalDarkPalette }
 
 @Composable
 fun markerColors(): MarkerPalette = LocalMarkerPalette.current
 
 @Composable
-fun SvalkaTheme(mode: ThemeMode, style: VisualStyle, content: @Composable () -> Unit) {
+fun SvalkaTheme(mode: ThemeMode, content: @Composable () -> Unit) {
     val dark = when (mode) { ThemeMode.DARK -> true; ThemeMode.LIGHT -> false; ThemeMode.SYSTEM -> isSystemInDarkTheme() }
-    val palette = when (style) {
-        VisualStyle.LEGACY -> if (dark) legacyDarkPalette else legacyLightPalette
-        VisualStyle.TERMINAL, VisualStyle.SIGNAL -> if (dark) terminalDarkPalette else terminalLightPalette
-    }
+    val palette = if (dark) terminalDarkPalette else terminalLightPalette
     val scheme = if (dark) darkColorScheme(
         primary = palette.accent, onPrimary = palette.accentText,
         background = palette.background, onBackground = palette.foreground,
@@ -79,6 +58,6 @@ fun SvalkaTheme(mode: ThemeMode, style: VisualStyle, content: @Composable () -> 
         outline = palette.divider
     )
     androidx.compose.runtime.CompositionLocalProvider(LocalMarkerPalette provides palette) {
-        MaterialTheme(colorScheme = scheme, content = content)
+        MaterialTheme(colorScheme = scheme, typography = SvalkaTypography, content = content)
     }
 }

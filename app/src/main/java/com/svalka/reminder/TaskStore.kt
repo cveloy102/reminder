@@ -17,7 +17,7 @@ fun normalizeTaskTitle(title: String): String {
 }
 
 enum class TaskList(val storageValue: String) {
-    TASKS("tasks"), SHOPPING("shopping"), LINKS("links");
+    TASKS("tasks"), SHOPPING("shopping"), LINKS("links"), THOUGHTS("thoughts");
 
     companion object {
         fun fromStorage(value: String): TaskList = entries.firstOrNull { it.storageValue == value }
@@ -34,8 +34,29 @@ data class ReminderTask(
     val reminderAt: Long? = null,
     val deletedAt: Long? = null,
     val list: TaskList = TaskList.TASKS,
-    val url: String? = null
+    val url: String? = null,
+    val repeat: RepeatRule = RepeatRule.NONE,
+    val snoozeUntil: Long? = null
 )
+
+const val TRASH_RETENTION_MS = 30L * 24 * 60 * 60 * 1000
+
+fun purgeExpiredTrash(tasks: List<ReminderTask>, now: Long): List<ReminderTask> =
+    tasks.filterNot { it.deletedAt != null && now - it.deletedAt > TRASH_RETENTION_MS }
+
+fun ReminderTask.toJson(): JSONObject = JSONObject().apply {
+    put("id", id)
+    put("title", title)
+    put("createdAt", createdAt)
+    put("completed", completed)
+    put("pinned", pinned)
+    put("reminderAt", reminderAt ?: JSONObject.NULL)
+    put("deletedAt", deletedAt ?: JSONObject.NULL)
+    put("list", list.storageValue)
+    put("url", url ?: JSONObject.NULL)
+    put("repeat", repeat.storageValue)
+    put("snoozeUntil", snoozeUntil ?: JSONObject.NULL)
+}
 
 fun normalizeLinkUrl(value: String): String? {
     val clean = value.trim()
@@ -63,58 +84,67 @@ fun orderedActiveTasks(tasks: List<ReminderTask>): List<ReminderTask> =
     tasks.filter { it.deletedAt == null }
         .sortedWith(compareBy<ReminderTask> { it.completed }.thenByDescending { it.pinned })
 
-class TaskStore(context: Context) {
+class TaskStore(private val context: Context) {
     private val taskFile = AtomicFile(File(context.filesDir, "tasks.json"))
     private val shoppingFile = AtomicFile(File(context.filesDir, "shopping.json"))
     private val linksFile = AtomicFile(File(context.filesDir, "links.json"))
+    private val thoughtsFile = AtomicFile(File(context.filesDir, "thoughts.json"))
 
-    fun load(): List<ReminderTask> = loadFrom(taskFile, TaskList.TASKS) +
-        loadFrom(shoppingFile, TaskList.SHOPPING) + loadFrom(linksFile, TaskList.LINKS)
+    /** Names of data files that could not be read and were set aside as *.corrupt-*. */
+    var recoveredFiles: List<String> = emptyList()
+        private set
 
-    private fun loadFrom(file: AtomicFile, list: TaskList): List<ReminderTask> = try {
+    fun load(): List<ReminderTask> {
+        val problems = mutableListOf<String>()
+        val result = loadFrom(taskFile, TaskList.TASKS, problems) +
+            loadFrom(shoppingFile, TaskList.SHOPPING, problems) +
+            loadFrom(linksFile, TaskList.LINKS, problems) +
+            loadFrom(thoughtsFile, TaskList.THOUGHTS, problems)
+        if (problems.isNotEmpty()) recoveredFiles = problems
+        return result
+    }
+
+    private fun loadFrom(file: AtomicFile, list: TaskList, problems: MutableList<String>): List<ReminderTask> = try {
         val json = file.openRead().bufferedReader().use { it.readText() }
         val array = JSONArray(json)
         buildList {
-            for (i in 0 until array.length()) {
-                val item = array.getJSONObject(i)
-                add(ReminderTask(
-                    id = item.getString("id"),
-                    title = item.getString("title"),
-                    createdAt = item.getLong("createdAt"),
-                    completed = item.optBoolean("completed"),
-                    pinned = item.optBoolean("pinned"),
-                    reminderAt = if (item.isNull("reminderAt")) null else item.getLong("reminderAt"),
-                    deletedAt = if (item.isNull("deletedAt")) null else item.getLong("deletedAt"),
-                    list = list,
-                    url = if (item.isNull("url")) null else item.optString("url").takeIf { it.isNotBlank() }
-                ))
-            }
+            for (i in 0 until array.length()) add(parseTask(array.getJSONObject(i), list))
         }
     } catch (_: java.io.FileNotFoundException) {
         emptyList()
+    } catch (_: Exception) {
+        // A damaged file must not crash the app on every launch: keep it aside for manual recovery.
+        val broken = file.baseFile
+        val aside = File(broken.parentFile, "${broken.name}.corrupt-${System.currentTimeMillis()}")
+        runCatching { broken.renameTo(aside) }
+        problems += broken.name
+        emptyList()
     }
+
+    private fun parseTask(item: JSONObject, list: TaskList) = ReminderTask(
+        id = item.getString("id"),
+        title = item.getString("title"),
+        createdAt = item.getLong("createdAt"),
+        completed = item.optBoolean("completed"),
+        pinned = item.optBoolean("pinned"),
+        reminderAt = if (item.isNull("reminderAt")) null else item.getLong("reminderAt"),
+        deletedAt = if (item.isNull("deletedAt")) null else item.getLong("deletedAt"),
+        list = list,
+        url = if (item.isNull("url")) null else item.optString("url").takeIf { it.isNotBlank() },
+        repeat = RepeatRule.fromStorage(item.optString("repeat", "none")),
+        snoozeUntil = if (item.isNull("snoozeUntil")) null else item.getLong("snoozeUntil")
+    )
 
     fun save(tasks: List<ReminderTask>) {
         saveTo(taskFile, tasks.filter { it.list == TaskList.TASKS })
         saveTo(shoppingFile, tasks.filter { it.list == TaskList.SHOPPING })
         saveTo(linksFile, tasks.filter { it.list == TaskList.LINKS })
+        saveTo(thoughtsFile, tasks.filter { it.list == TaskList.THOUGHTS })
     }
 
     private fun saveTo(file: AtomicFile, tasks: List<ReminderTask>) {
         val array = JSONArray()
-        tasks.forEach { task ->
-            array.put(JSONObject().apply {
-                put("id", task.id)
-                put("title", task.title)
-                put("createdAt", task.createdAt)
-                put("completed", task.completed)
-                put("pinned", task.pinned)
-                put("reminderAt", task.reminderAt ?: JSONObject.NULL)
-                put("deletedAt", task.deletedAt ?: JSONObject.NULL)
-                put("list", task.list.storageValue)
-                put("url", task.url ?: JSONObject.NULL)
-            })
-        }
+        tasks.forEach { array.put(it.toJson()) }
         val stream = file.startWrite()
         try {
             stream.write(array.toString().toByteArray(Charsets.UTF_8))

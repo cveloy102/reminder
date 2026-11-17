@@ -43,6 +43,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.svalka.reminder.ui.theme.Mono
 import com.svalka.reminder.ui.theme.markerColors
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -50,7 +51,7 @@ import java.util.Date
 import java.util.Locale
 
 @Composable
-fun ReminderPicker(task: ReminderTask, onDismiss: () -> Unit, onConfirm: (Long) -> Unit) {
+fun ReminderPicker(task: ReminderTask, onDismiss: () -> Unit, onConfirm: (Long, RepeatRule) -> Unit) {
     val palette = markerColors()
     val initial = remember(task.id) {
         Calendar.getInstance().apply {
@@ -63,6 +64,7 @@ fun ReminderPicker(task: ReminderTask, onDismiss: () -> Unit, onConfirm: (Long) 
     var hour by remember(task.id) { mutableStateOf(initial.get(Calendar.HOUR_OF_DAY).toString().padStart(2, '0')) }
     var minute by remember(task.id) { mutableStateOf(initial.get(Calendar.MINUTE).toString().padStart(2, '0')) }
     var error by remember(task.id) { mutableStateOf<String?>(null) }
+    var repeat by remember(task.id) { mutableStateOf(task.repeat) }
     val month = Calendar.getInstance().apply { timeInMillis = shownMonth }
     val offset = (month.get(Calendar.DAY_OF_WEEK) + 5) % 7
     val days = month.getActualMaximum(Calendar.DAY_OF_MONTH)
@@ -75,8 +77,8 @@ fun ReminderPicker(task: ReminderTask, onDismiss: () -> Unit, onConfirm: (Long) 
         Surface(shape = RoundedCornerShape(16.dp), color = palette.sheet,
             modifier = Modifier.testTag("reminderPicker")) {
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp)) {
-                Text("НАПОМИНАНИЕ", color = palette.reminderText, fontSize = 11.sp,
-                    fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+                Text("НАПОМИНАНИЕ", color = palette.reminderText, fontSize = 11.sp, fontFamily = Mono,
+                    fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
                 Spacer(Modifier.height(8.dp))
                 Text("Когда напомнить?", color = palette.foreground,
                     fontSize = 27.sp, lineHeight = 31.sp, fontWeight = FontWeight.Black)
@@ -129,14 +131,33 @@ fun ReminderPicker(task: ReminderTask, onDismiss: () -> Unit, onConfirm: (Long) 
                     }
                 }
                 Spacer(Modifier.height(18.dp))
-                Text("ВРЕМЯ · 24 ЧАСА", color = palette.secondary,
-                    fontSize = 11.sp, fontWeight = FontWeight.Black, letterSpacing = 1.5.sp)
+                Text("ВРЕМЯ · 24 ЧАСА", color = palette.secondary, fontFamily = Mono,
+                    fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                 Spacer(Modifier.height(10.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalAlignment = Alignment.CenterVertically) {
                     TimeField(hour, { hour = it; error = null }, "reminderHour", Modifier.weight(1f))
                     Text(":", color = palette.foreground, fontSize = 26.sp, fontWeight = FontWeight.Black)
                     TimeField(minute, { minute = it; error = null }, "reminderMinute", Modifier.weight(1f))
+                }
+                Spacer(Modifier.height(18.dp))
+                Text("ПОВТОР", color = palette.secondary, fontFamily = Mono,
+                    fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                Spacer(Modifier.height(10.dp))
+                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(9.dp)).border(1.dp, palette.divider, RoundedCornerShape(9.dp))) {
+                    listOf(RepeatRule.NONE to "НЕТ", RepeatRule.DAILY to "ДЕНЬ",
+                        RepeatRule.WEEKLY to "НЕДЕЛЯ", RepeatRule.MONTHLY to "МЕСЯЦ").forEach { (rule, label) ->
+                        Box(
+                            Modifier.weight(1f).height(44.dp)
+                                .background(if (repeat == rule) palette.accent else palette.sheet)
+                                .clickable { repeat = rule }
+                                .testTag("repeat:${rule.storageValue}"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(label, fontSize = 11.sp, fontWeight = FontWeight.Black, maxLines = 1,
+                                color = if (repeat == rule) palette.accentText else palette.foreground)
+                        }
+                    }
                 }
                 error?.let {
                     Spacer(Modifier.height(10.dp))
@@ -158,7 +179,7 @@ fun ReminderPicker(task: ReminderTask, onDismiss: () -> Unit, onConfirm: (Long) 
                                 set(Calendar.MILLISECOND, 0)
                             }.timeInMillis
                             if (at <= System.currentTimeMillis()) error = "Выбери дату и время в будущем"
-                            else onConfirm(at)
+                            else onConfirm(at, repeat)
                         }
                     },
                     modifier = Modifier.fillMaxWidth().height(54.dp).testTag("saveReminder"),
@@ -193,7 +214,7 @@ private fun TimeField(value: String, onChange: (String) -> Unit, tag: String, mo
         modifier = modifier.height(58.dp).clip(RoundedCornerShape(9.dp))
             .background(palette.background).border(1.dp, palette.divider, RoundedCornerShape(9.dp))
             .testTag(tag),
-        textStyle = TextStyle(color = palette.foreground, fontSize = 25.sp,
+        textStyle = TextStyle(fontFamily = Mono, color = palette.foreground, fontSize = 25.sp,
             fontWeight = FontWeight.Black, textAlign = TextAlign.Center),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         cursorBrush = SolidColor(palette.accent),

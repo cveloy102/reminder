@@ -86,12 +86,6 @@ class TaskFlowTest {
             val value = rule.activity.getSharedPreferences("settings", 0).getString("theme", null)
             check(value == "LIGHT")
         }
-        rule.onNodeWithTag("style:signal").performClick()
-        rule.runOnUiThread {
-            val value = rule.activity.getSharedPreferences("settings", 0).getString("visual_style", null)
-            check(value == "SIGNAL")
-        }
-        rule.onNodeWithTag("style:terminal").performClick()
         rule.onNodeWithTag("mode:system").performClick()
         rule.onNodeWithText("НАЗАД К СПИСКУ ←").performClick()
     }
@@ -329,7 +323,7 @@ class TaskFlowTest {
         rule.waitUntil(3_000) {
             TaskStore(rule.activity).load().first { it.title == title }.pinned
         }
-        rule.onNodeWithText("ЗАКРЕПЛЕНО").assertIsDisplayed()
+        rule.onNodeWithText("ЗАКРЕПЛЕНО", substring = true).assertIsDisplayed()
         rule.onNodeWithText(title).performTouchInput { longClick() }
         rule.waitUntil(3_000) {
             !TaskStore(rule.activity).load().first { it.title == title }.pinned

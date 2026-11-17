@@ -50,8 +50,8 @@ class ReminderScheduler(private val context: Context) {
     }
 
     fun schedule(task: ReminderTask) {
-        val at = task.reminderAt ?: return
-        if (task.completed || task.deletedAt != null || at <= System.currentTimeMillis()) return
+        val at = task.effectiveAt ?: return
+        if (!task.remindable() || at <= System.currentTimeMillis()) return
         val pending = pendingIntent(task.id)
         try {
             if (Build.VERSION.SDK_INT >= 31 && !alarmManager.canScheduleExactAlarms()) {
@@ -66,14 +66,44 @@ class ReminderScheduler(private val context: Context) {
 
     fun cancel(id: String) = alarmManager.cancel(pendingIntent(id))
 
-    fun rescheduleAll(tasks: List<ReminderTask>) {
+    /**
+     * Re-arms every alarm and delivers reminders that were missed (device off, app updated).
+     * Returns the tasks, advanced to their next occurrence where a reminder was handled.
+     */
+    fun rescheduleAll(tasks: List<ReminderTask>): List<ReminderTask> {
         val now = System.currentTimeMillis()
-        tasks.forEach { task ->
-            val at = task.reminderAt ?: return@forEach
-            if (task.completed || task.deletedAt != null) return@forEach
-            if (at > now) schedule(task)
-            else if (now - at <= MISSED_REMINDER_WINDOW) postReminder(context, task)
+        pruneDeliveredLog(tasks)
+        val updated = tasks.map { task ->
+            val at = task.effectiveAt
+            if (at == null || !task.remindable()) return@map task
+            if (at > now) { schedule(task); return@map task }
+            val handled = if (now - at <= MISSED_REMINDER_WINDOW) postReminder(context, task) else true
+            if (!handled) return@map task
+            task.afterDelivery(now).also { schedule(it) }
         }
+        if (updated != tasks) TaskStore(context).save(updated)
+        return updated
+    }
+
+    /** Called after a notification for [task] was shown: moves a repeating task to its next date. */
+    fun commitDelivery(task: ReminderTask) {
+        val updated = task.afterDelivery(System.currentTimeMillis())
+        if (updated == task) return
+        replaceInStore(updated)
+        schedule(updated)
+    }
+
+    fun replaceInStore(task: ReminderTask) {
+        val store = TaskStore(context)
+        store.save(store.load().map { if (it.id == task.id) task else it })
+        TaskEvents.notifyChanged()
+    }
+
+    private fun pruneDeliveredLog(tasks: List<ReminderTask>) {
+        val log = context.getSharedPreferences("delivered_reminders", Context.MODE_PRIVATE)
+        val known = tasks.mapTo(HashSet()) { it.id }
+        val stale = log.all.keys.filter { it !in known }
+        if (stale.isNotEmpty()) log.edit().apply { stale.forEach { remove(it) } }.apply()
     }
 
     fun requestExactAlarmAccessIfNeeded(activity: Activity) {
@@ -102,47 +132,86 @@ class ReminderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val id = intent.getStringExtra("task_id") ?: return
         val task = TaskStore(context).load().firstOrNull { it.id == id } ?: return
-        if (task.completed || task.deletedAt != null || task.reminderAt == null ||
-            task.reminderAt > System.currentTimeMillis() + 60_000L
-        ) return
-        postReminder(context, task)
+        val at = task.effectiveAt ?: return
+        if (!task.remindable() || at > System.currentTimeMillis() + 60_000L) return
+        if (postReminder(context, task)) ReminderScheduler(context).commitDelivery(task)
     }
 }
 
-private fun postReminder(context: Context, task: ReminderTask) {
-        val at = task.reminderAt ?: return
-        val delivered = context.getSharedPreferences("delivered_reminders", Context.MODE_PRIVATE)
-        if (delivered.getLong(task.id, Long.MIN_VALUE) == at) return
-        if (Build.VERSION.SDK_INT >= 33 &&
-            context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) return
-        if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return
-        ReminderScheduler(context).createChannel()
-        if (Build.VERSION.SDK_INT >= 26 && context.getSystemService(NotificationManager::class.java)
-                .getNotificationChannel(CHANNEL_ID)?.importance == NotificationManager.IMPORTANCE_NONE) return
-        val open = PendingIntent.getActivity(
-            context, 0, Intent(context, MainActivity::class.java),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("СВАЛКА · ПОРА")
-            .setContentText(task.title)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(task.title))
-            .setContentIntent(open)
-            .setAutoCancel(true)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setCategory(NotificationCompat.CATEGORY_REMINDER)
-            .setColor(0xFFDFFF71.toInt())
-            .setSound(reminderSoundUri(context))
-            .setVibrate(VIBRATION_PATTERN)
-            .build()
-        try {
-            NotificationManagerCompat.from(context).notify(task.id.hashCode(), notification)
-            delivered.edit().putLong(task.id, at).apply()
-        } catch (_: SecurityException) {
-            // Permission can be revoked between the check and notify; retry on next app start.
+/** Buttons under the notification: "Готово" and snooze. */
+class ReminderActionReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        val id = intent.getStringExtra("task_id") ?: return
+        val task = TaskStore(context).load().firstOrNull { it.id == id } ?: return
+        val now = System.currentTimeMillis()
+        val updated = when (intent.action) {
+            ACTION_DONE -> task.markDone()
+            ACTION_SNOOZE -> task.snoozedFor(now, intent.getIntExtra("minutes", 15))
+            else -> return
         }
+        val scheduler = ReminderScheduler(context)
+        scheduler.cancel(id)
+        scheduler.replaceInStore(updated)
+        scheduler.schedule(updated)
+        NotificationManagerCompat.from(context).cancel(id.hashCode())
+    }
+
+    companion object {
+        const val ACTION_DONE = "com.svalka.reminder.DONE"
+        const val ACTION_SNOOZE = "com.svalka.reminder.SNOOZE"
+    }
+}
+
+private fun actionIntent(context: Context, task: ReminderTask, action: String, minutes: Int = 0): PendingIntent {
+    val intent = Intent(context, ReminderActionReceiver::class.java).apply {
+        this.action = action
+        data = Uri.parse("svalka://reminder/${task.id}/$action/$minutes")
+        putExtra("task_id", task.id)
+        putExtra("minutes", minutes)
+    }
+    return PendingIntent.getBroadcast(context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+}
+
+/** Returns true when the reminder was shown now or had already been shown before. */
+private fun postReminder(context: Context, task: ReminderTask): Boolean {
+    val at = task.effectiveAt ?: return false
+    val delivered = context.getSharedPreferences("delivered_reminders", Context.MODE_PRIVATE)
+    if (delivered.getLong(task.id, Long.MIN_VALUE) == at) return true
+    if (Build.VERSION.SDK_INT >= 33 &&
+        context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+    ) return false
+    if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return false
+    ReminderScheduler(context).createChannel()
+    if (Build.VERSION.SDK_INT >= 26 && context.getSystemService(NotificationManager::class.java)
+            .getNotificationChannel(CHANNEL_ID)?.importance == NotificationManager.IMPORTANCE_NONE) return false
+    val open = PendingIntent.getActivity(
+        context, 0, Intent(context, MainActivity::class.java),
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    )
+    val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+        .setSmallIcon(R.drawable.ic_notification)
+        .setContentTitle("СВАЛКА · ПОРА")
+        .setContentText(task.title)
+        .setStyle(NotificationCompat.BigTextStyle().bigText(task.title))
+        .setContentIntent(open)
+        .setAutoCancel(true)
+        .setPriority(NotificationCompat.PRIORITY_HIGH)
+        .setCategory(NotificationCompat.CATEGORY_REMINDER)
+        .setColor(0xFFDFFF71.toInt())
+        .setSound(reminderSoundUri(context))
+        .setVibrate(VIBRATION_PATTERN)
+        .addAction(0, "Готово", actionIntent(context, task, ReminderActionReceiver.ACTION_DONE))
+        .addAction(0, "Через 15 мин", actionIntent(context, task, ReminderActionReceiver.ACTION_SNOOZE, 15))
+        .addAction(0, "Через 1 час", actionIntent(context, task, ReminderActionReceiver.ACTION_SNOOZE, 60))
+        .build()
+    return try {
+        NotificationManagerCompat.from(context).notify(task.id.hashCode(), notification)
+        delivered.edit().putLong(task.id, at).apply()
+        true
+    } catch (_: SecurityException) {
+        // Permission can be revoked between the check and notify; retry on next app start.
+        false
+    }
 }
 
 class RestartReceiver : BroadcastReceiver() {
@@ -152,6 +221,16 @@ class RestartReceiver : BroadcastReceiver() {
             intent.action == AlarmManager.ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED
         ) {
             ReminderScheduler(context).rescheduleAll(TaskStore(context).load())
+            TaskEvents.notifyChanged()
         }
+    }
+}
+
+/** Lets receivers tell a running MainActivity that the stored tasks changed behind its back. */
+object TaskEvents {
+    @Volatile var onExternalChange: (() -> Unit)? = null
+
+    fun notifyChanged() {
+        android.os.Handler(android.os.Looper.getMainLooper()).post { onExternalChange?.invoke() }
     }
 }

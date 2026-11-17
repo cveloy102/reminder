@@ -20,7 +20,6 @@ import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
 import com.svalka.reminder.ui.theme.SvalkaTheme
 import com.svalka.reminder.ui.theme.ThemeMode
-import com.svalka.reminder.ui.theme.VisualStyle
 import java.io.ByteArrayOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -40,7 +39,6 @@ class MainActivity : ComponentActivity() {
     private lateinit var reminders: ReminderScheduler
     private var tasks by mutableStateOf<List<ReminderTask>>(emptyList())
     private var themeMode by mutableStateOf(ThemeMode.SYSTEM)
-    private var visualStyle by mutableStateOf(VisualStyle.TERMINAL)
     private var backupPreview by mutableStateOf<TaskBackup?>(null)
     private var cloudFile by mutableStateOf<Uri?>(null)
     private var cloudSaving by mutableStateOf(false)
@@ -49,12 +47,14 @@ class MainActivity : ComponentActivity() {
     private val cloudWriteMutex = Mutex()
     private var pendingAutoSave: Job? = null
     private var requestExactAfterNotificationPermission = false
+    private var sectionRequest by mutableStateOf<TaskList?>(null)
+    private var cloudSavesInFlight = 0
 
     private val chooseCloudFile = registerForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
     ) { uri ->
         if (uri == null) return@registerForActivityResult
-        if (uri.authority != "com.google.android.apps.docs.storage") {
+        if (uri.authority?.startsWith("com.google.android.apps.docs.storage") != true) {
             Toast.makeText(this, "Выбери Google Диск в меню слева", Toast.LENGTH_LONG).show()
             return@registerForActivityResult
         }
@@ -110,8 +110,9 @@ class MainActivity : ComponentActivity() {
         val loadedTasks = store.load()
         tasks = loadedTasks.map { it.normalized() }
         if (tasks != loadedTasks) store.save(tasks)
+        reportRecoveredFiles()
+        purgeTrash()
         themeMode = ThemeMode.fromValue(getSharedPreferences("settings", MODE_PRIVATE).getString("theme", null))
-        visualStyle = VisualStyle.fromValue(getSharedPreferences("settings", MODE_PRIVATE).getString("visual_style", null))
         val cloudSettings = getSharedPreferences("cloud_backup", MODE_PRIVATE)
         cloudFile = cloudSettings.getString("uri", null)?.let(Uri::parse)
             ?.takeIf { saved -> contentResolver.persistedUriPermissions.any { it.uri == saved && it.isWritePermission } }
@@ -130,22 +131,21 @@ class MainActivity : ComponentActivity() {
                     isAppearanceLightNavigationBars = !dark
                 }
             }
-            SvalkaTheme(themeMode, visualStyle) {
+            SvalkaTheme(themeMode) {
                 SvalkaScreen(
                     tasks = tasks,
                     themeMode = themeMode,
-                    visualStyle = visualStyle,
-                    onStyleChange = { style ->
-                        visualStyle = style
-                        getSharedPreferences("settings", MODE_PRIVATE).edit().putString("visual_style", style.name).apply()
-                    },
                     onThemeChange = { mode ->
                         themeMode = mode
                         getSharedPreferences("settings", MODE_PRIVATE).edit().putString("theme", mode.name).apply()
                     },
+                    sectionRequest = sectionRequest,
+                    onSectionRequestHandled = { sectionRequest = null },
                     onAdd = ::addTask,
                     onAddLink = ::addLink,
                     onUpdate = ::save,
+                    onToggle = ::toggleDone,
+                    onClearCompleted = ::clearCompleted,
                     onReorder = ::reorderTasks,
                     onDelete = ::deletePermanently,
                     onSetReminder = ::setReminder,
@@ -165,6 +165,85 @@ class MainActivity : ComponentActivity() {
             }
         }
         requestNotificationPermission()
+        if (savedInstanceState == null) handleShare(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleShare(intent)
+    }
+
+    override fun onStart() {
+        super.onStart()
+        TaskEvents.onExternalChange = ::reloadFromStore
+    }
+
+    override fun onStop() {
+        TaskEvents.onExternalChange = null
+        super.onStop()
+    }
+
+    private fun reloadFromStore() {
+        tasks = store.load().map { it.normalized() }
+    }
+
+    private fun reportRecoveredFiles() {
+        if (store.recoveredFiles.isNotEmpty()) {
+            Toast.makeText(this,
+                "Файл данных был повреждён и отложен в сторону: ${store.recoveredFiles.joinToString()}",
+                Toast.LENGTH_LONG).show()
+        }
+    }
+
+    /** Trash older than 30 days is removed for good. */
+    private fun purgeTrash() {
+        val kept = purgeExpiredTrash(tasks, System.currentTimeMillis())
+        if (kept.size != tasks.size) {
+            tasks.filter { it !in kept }.forEach { reminders.cancel(it.id) }
+            tasks = kept
+            store.save(tasks)
+        }
+    }
+
+    private fun handleShare(shared: Intent?) {
+        if (shared?.action != Intent.ACTION_SEND || shared.type?.startsWith("text/") != true) return
+        shared.action = null
+        val text = shared.getStringExtra(Intent.EXTRA_TEXT)?.trim().orEmpty()
+        if (text.isEmpty()) return
+        val subject = (shared.getStringExtra(Intent.EXTRA_SUBJECT)
+            ?: shared.getStringExtra(Intent.EXTRA_TITLE))?.trim().orEmpty()
+        val url = findUrlInText(text)?.let(::normalizeLinkUrl)
+        if (url != null) {
+            sectionRequest = TaskList.LINKS
+            if (tasks.any { it.list == TaskList.LINKS && it.deletedAt == null && it.url == url }) {
+                Toast.makeText(this, "Эта ссылка уже сохранена", Toast.LENGTH_SHORT).show()
+            } else {
+                val title = subject.takeIf { it.isNotEmpty() && findUrlInText(it) == null } ?: ""
+                addLink(url, title)
+                Toast.makeText(this, "Ссылка сохранена", Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            sectionRequest = TaskList.TASKS
+            addTask(text, TaskList.TASKS)
+            Toast.makeText(this, "Добавлено в дела", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun toggleDone(task: ReminderTask) {
+        save(task.copy(completed = !task.completed, pinned = false, snoozeUntil = null))
+    }
+
+    private fun clearCompleted(list: TaskList) {
+        val now = System.currentTimeMillis()
+        val moved = tasks.filter { it.list == list && it.completed && it.deletedAt == null }
+        if (moved.isEmpty()) return
+        val ids = moved.mapTo(HashSet()) { it.id }
+        tasks = tasks.map { if (it.id in ids) it.copy(deletedAt = now) else it }
+        store.save(tasks)
+        saveToCloud(manual = false)
+        moved.forEach { reminders.cancel(it.id) }
+        Toast.makeText(this, "В корзине: ${moved.size}", Toast.LENGTH_SHORT).show()
     }
 
     override fun onResume() {
@@ -174,7 +253,10 @@ class MainActivity : ComponentActivity() {
                 window.attributes = window.attributes.apply { preferredRefreshRate = maximum }
             }
         }
-        if (::reminders.isInitialized) reminders.rescheduleAll(store.load())
+        if (::reminders.isInitialized) {
+            tasks = reminders.rescheduleAll(store.load().map { it.normalized() })
+            purgeTrash()
+        }
     }
 
     private fun save(task: ReminderTask) {
@@ -235,11 +317,14 @@ class MainActivity : ComponentActivity() {
         val target = cloudFile ?: return
         pendingAutoSave?.cancel()
         val snapshot = tasks.toList()
+        // Never let an automatic save replace a good backup with an empty list (e.g. after a data-file problem).
+        if (!manual && snapshot.isEmpty()) return
         val job = lifecycleScope.launch {
             if (!manual) delay(3_000)
+            cloudSavesInFlight++
+            cloudSaving = true
             cloudWriteMutex.withLock {
                 try {
-                    cloudSaving = true
                     val data = TaskBackupCodec.encode(snapshot).toByteArray(Charsets.UTF_8)
                     require(data.size <= TaskBackupCodec.MAX_BYTES) { "Список слишком большой для копии" }
                     withContext(Dispatchers.IO) {
@@ -257,7 +342,8 @@ class MainActivity : ComponentActivity() {
                     cloudError = error.message ?: "Ошибка сохранения"
                     if (manual) Toast.makeText(this@MainActivity, "Не удалось сохранить: ${error.message}", Toast.LENGTH_LONG).show()
                 } finally {
-                    cloudSaving = false
+                    cloudSavesInFlight--
+                    cloudSaving = cloudSavesInFlight > 0
                 }
             }
         }
@@ -284,7 +370,7 @@ class MainActivity : ComponentActivity() {
             tasks.forEach { reminders.cancel(it.id) }
             tasks = result
             saveToCloud(manual = false)
-            reminders.rescheduleAll(result)
+            tasks = reminders.rescheduleAll(result)
             backupPreview = null
             Toast.makeText(this, "Дела, покупки и ссылки восстановлены", Toast.LENGTH_SHORT).show()
         } catch (error: Exception) {
@@ -299,9 +385,9 @@ class MainActivity : ComponentActivity() {
         reminders.cancel(task.id)
     }
 
-    private fun setReminder(task: ReminderTask, at: Long) {
+    private fun setReminder(task: ReminderTask, at: Long, repeat: RepeatRule) {
         if (at <= System.currentTimeMillis()) return
-        save(task.copy(reminderAt = at))
+        save(task.copy(reminderAt = at, repeat = repeat, snoozeUntil = null))
         requestExactAfterNotificationPermission = true
         if (!requestNotificationPermission()) {
             requestExactAfterNotificationPermission = false
@@ -324,7 +410,7 @@ class MainActivity : ComponentActivity() {
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == 100 && grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
-            reminders.rescheduleAll(tasks)
+            tasks = reminders.rescheduleAll(tasks)
         }
         if (requestCode == 100 && requestExactAfterNotificationPermission &&
             grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED

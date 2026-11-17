@@ -11,29 +11,15 @@ object TaskBackupCodec {
     fun encode(tasks: List<ReminderTask>, exportedAt: Long = System.currentTimeMillis()): String =
         JSONObject().apply {
             put("app", "com.svalka.reminder")
-            put("version", 3)
+            put("version", 4)
             put("exportedAt", exportedAt)
-            put("tasks", JSONArray().apply {
-                tasks.forEach { task ->
-                    put(JSONObject().apply {
-                        put("id", task.id)
-                        put("title", task.title)
-                        put("createdAt", task.createdAt)
-                        put("completed", task.completed)
-                        put("pinned", task.pinned)
-                        put("reminderAt", task.reminderAt ?: JSONObject.NULL)
-                        put("deletedAt", task.deletedAt ?: JSONObject.NULL)
-                        put("list", task.list.storageValue)
-                        put("url", task.url ?: JSONObject.NULL)
-                    })
-                }
-            })
+            put("tasks", JSONArray().apply { tasks.forEach { put(it.toJson()) } })
         }.toString(2)
 
     fun decode(json: String): TaskBackup {
         require(json.toByteArray(Charsets.UTF_8).size <= MAX_BYTES) { "Файл слишком большой" }
         val root = JSONObject(json)
-        require(root.opt("app") == "com.svalka.reminder" && root.optInt("version", -1) in 1..3) {
+        require(root.opt("app") == "com.svalka.reminder" && root.optInt("version", -1) in 1..4) {
             "Это не копия СВАЛКИ или её версия не поддерживается"
         }
         val exportedAt = root.requiredLong("exportedAt")
@@ -59,7 +45,9 @@ object TaskBackupCodec {
                     reminderAt = item.optionalLong("reminderAt"),
                     deletedAt = item.optionalLong("deletedAt"),
                     list = TaskList.fromStorage(item.optString("list", "tasks")),
-                    url = if (item.isNull("url")) null else item.optString("url").takeIf { it.isNotBlank() }
+                    url = if (item.isNull("url")) null else item.optString("url").takeIf { it.isNotBlank() },
+                    repeat = RepeatRule.fromStorage(item.optString("repeat", "none")),
+                    snoozeUntil = item.optionalLong("snoozeUntil")
                 ))
             }
         }
