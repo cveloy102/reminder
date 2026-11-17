@@ -1,6 +1,6 @@
 # Сборка СВАЛКИ
 
-Проект использует Kotlin и Jetpack Compose. Откройте корень в Android Studio и установите Android SDK, указанный в `app/build.gradle.kts` (compileSdk 37). Минимальная версия Android — 9 (API 28).
+Проект использует Kotlin и Jetpack Compose. Откройте корень в Android Studio и установите Android SDK, указанный в `app/build.gradle.kts` (compileSdk 37). Минимальная версия Android — 7.0 (API 24).
 
 ```powershell
 .\gradlew.bat assembleDebug
@@ -8,6 +8,6 @@
 
 Вариант `personal` предназначен для оптимизированной локальной сборки; вариант `qa` использует отдельный applicationId и не заменяет обычную установку.
 
-Проверки задач, напоминаний и резервных копий находятся в `app/src/androidTest/`. Перед тестами на реальном телефоне сохраните пользовательские данные.
+Юнит-тесты — в `app/src/test/` (`gradlew testQaUnitTest`), проверки на телефоне — в `app/src/androidTest/` (`gradlew connectedQaAndroidTest`, ставят отдельную QA-версию). Перед тестами на реальном телефоне сохраните пользовательские данные.
 
 История исходного проекта Svalka сохранена в Git. Пути к SDK, кеши и ключи подписи не входят в репозиторий. Для установки обновления поверх прежнего приложения требуется прежняя подпись.
