@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# Everyday management of the СВАЛКА sync server. Run from its folder (default /opt/svalka-sync).
+#
+#   ./svalka-sync.sh status
+#   ./svalka-sync.sh user add EMAIL PASSWORD     create an account for the apps
+#   ./svalka-sync.sh user passwd EMAIL PASSWORD  change a password
+#   ./svalka-sync.sh signup on|off               open or close self sign-up in the apps
+#   ./svalka-sync.sh new-instance                after restoring pb_data by hand: apps re-check all records once
+#   ./svalka-sync.sh backup [DEST]               copy a consistent snapshot of the data (DEST: folder or user@host:path)
+#   ./svalka-sync.sh update                      restart with the current files (Docker: rebuild)
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")"
+[[ -f .env ]] && set -a && source .env && set +a
+PROFILE=()
+[[ "${SVALKA_CADDY:-false}" == true ]] && PROFILE=(--profile caddy)
+API="http://127.0.0.1:${SVALKA_PORT:-8090}"
+MODE="${SVALKA_MODE:-docker}"
+if [[ "$MODE" == native ]]; then
+  pb() { if command -v sudo >/dev/null; then sudo -u svalka ./pocketbase "$@" --dir=./pb_data; else runuser -u svalka -- ./pocketbase "$@" --dir=./pb_data; fi; }
+  restart() { systemctl restart svalka-sync; }
+else
+  pb() { docker compose exec -T pocketbase /pb/pocketbase "$@" --dir=/pb/pb_data; }
+  restart() { docker compose "${PROFILE[@]}" up -d "$@"; }
+fi
+command -v curl >/dev/null || { echo "curl is required" >&2; exit 1; }
+api() { curl -fsS -H "Content-Type: application/json" "$@"; }
+
+superuser_token() {
+  # A short-lived superuser token without knowing the admin password.
+  local email="cli@svalka-sync.internal" pass
+  pass="$(head -c 24 /dev/urandom | base64 | tr -d '/+=' | head -c 24)"
+  pb superuser upsert "$email" "$pass" >/dev/null
+  api -d "{\"identity\":\"$email\",\"password\":\"$pass\"}" "$API/api/collections/_superusers/auth-with-password" \
+    | sed -n 's/.*"token":"\([^"]*\)".*/\1/p'
+}
+
+set_setting() {
+  # Server switches live in the "svalka_settings" collection (see pb_migrations).
+  local token id
+  token="$(superuser_token)"
+  id="$(api -G -H "Authorization: $token" --data-urlencode "filter=key='$1'" "$API/api/collections/svalka_settings/records" \
+    | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)"
+  if [[ -n "$id" ]]; then
+    api -X PATCH -H "Authorization: $token" -d "{\"value\":\"$2\"}" "$API/api/collections/svalka_settings/records/$id" >/dev/null
+  else
+    api -H "Authorization: $token" -d "{\"key\":\"$1\",\"value\":\"$2\"}" "$API/api/collections/svalka_settings/records" >/dev/null
+  fi
+}
+
+case "${1:-}" in
+  status)
+    if [[ "$MODE" == native ]]; then systemctl --no-pager --lines=0 status svalka-sync || true; else docker compose ps; fi
+    api "$API/api/svalka/info"; echo ;;
+  user)
+    [[ $# -eq 4 ]] || { echo "usage: $0 user add|passwd EMAIL PASSWORD" >&2; exit 2; }
+    token="$(superuser_token)"
+    if [[ "$2" == add ]]; then
+      api -H "Authorization: $token" -d "{\"email\":\"$3\",\"password\":\"$4\",\"passwordConfirm\":\"$4\",\"verified\":true}" \
+        "$API/api/collections/users/records" >/dev/null && echo "Account $3 created."
+    elif [[ "$2" == passwd ]]; then
+      id="$(api -G -H "Authorization: $token" --data-urlencode "filter=email='$3'" "$API/api/collections/users/records" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)"
+      [[ -n "$id" ]] || { echo "No account $3" >&2; exit 1; }
+      api -X PATCH -H "Authorization: $token" -d "{\"password\":\"$4\",\"passwordConfirm\":\"$4\"}" \
+        "$API/api/collections/users/records/$id" >/dev/null && echo "Password changed."
+    else echo "usage: $0 user add|passwd EMAIL PASSWORD" >&2; exit 2; fi ;;
+  signup)
+    case "${2:-}" in on) v=true ;; off) v=false ;; *) echo "usage: $0 signup on|off" >&2; exit 2 ;; esac
+    sed -i "s/^SVALKA_ALLOW_SIGNUP=.*/SVALKA_ALLOW_SIGNUP=$v/" .env
+    set_setting signup "$v"
+    echo "Sign-up: $2" ;;
+  new-instance)
+    # After restoring pb_data from a backup by hand: makes the apps compare all records with the server once.
+    set_setting instance "$(head -c 24 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 16)"
+    echo "The apps will compare all their records with the server on the next sync." ;;
+  backup)
+    dest="${2:-./backups}"
+    name="svalka-$(date +%Y-%m-%d_%H-%M).zip"
+    token="$(superuser_token)"
+    api -H "Authorization: $token" -d "{\"name\":\"$name\"}" "$API/api/backups" >/dev/null
+    if [[ "$dest" == *:* ]]; then scp -q "pb_data/backups/$name" "$dest"
+    else mkdir -p "$dest" && cp "pb_data/backups/$name" "$dest/"; fi
+    echo "Backup $name -> $dest" ;;
+  update)
+    if [[ "$MODE" == native ]]; then restart; else restart --build; fi ;;
+  *)
+    sed -n '2,10p' "$0"; exit 2 ;;
+esac

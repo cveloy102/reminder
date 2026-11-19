@@ -79,7 +79,8 @@ class ReminderScheduler(private val context: Context) {
             if (at > now) { schedule(task); return@map task }
             val handled = if (now - at <= MISSED_REMINDER_WINDOW) postReminder(context, task) else true
             if (!handled) return@map task
-            task.afterDelivery(now).also { schedule(it) }
+            // Stamped with the time of the change, so sync orders it correctly against edits on other devices.
+            task.afterDelivery(now).let { if (it == task) it else it.copy(updatedAt = now) }.also { schedule(it) }
         }
         if (updated != tasks) TaskStore(context).save(updated)
         return updated
@@ -93,9 +94,11 @@ class ReminderScheduler(private val context: Context) {
         schedule(updated)
     }
 
+    /** Saves a change made outside the app's screen (notification buttons, delivery), stamped with its time for sync. */
     fun replaceInStore(task: ReminderTask) {
         val store = TaskStore(context)
-        store.save(store.load().map { if (it.id == task.id) task else it })
+        val now = System.currentTimeMillis()
+        store.save(store.load().map { if (it.id == task.id) (if (it == task) it else task.copy(updatedAt = now)) else it })
         TaskEvents.notifyChanged()
     }
 
@@ -197,7 +200,8 @@ private fun postReminder(context: Context, task: ReminderTask): Boolean {
         .setAutoCancel(true)
         .setPriority(NotificationCompat.PRIORITY_HIGH)
         .setCategory(NotificationCompat.CATEGORY_REMINDER)
-        .setColor(0xFFDFFF71.toInt())
+        .setColor(0xFFF0443E.toInt()) // the app's red accent
+        .setLargeIcon(notificationLargeIcon(context))
         .setSound(reminderSoundUri(context))
         .setVibrate(VIBRATION_PATTERN)
         .addAction(0, "Готово", actionIntent(context, task, ReminderActionReceiver.ACTION_DONE))
@@ -233,4 +237,19 @@ object TaskEvents {
     fun notifyChanged() {
         android.os.Handler(android.os.Looper.getMainLooper()).post { onExternalChange?.invoke() }
     }
+}
+
+/** The app icon (black square, white "СВАЛ" + red "КА") for the notification, scaled once and kept. */
+private var cachedLargeIcon: android.graphics.Bitmap? = null
+
+private fun notificationLargeIcon(context: Context): android.graphics.Bitmap? {
+    cachedLargeIcon?.let { return it }
+    return runCatching {
+        val size = (64 * context.resources.displayMetrics.density).toInt()
+        val source = android.graphics.BitmapFactory.decodeResource(context.resources, R.drawable.icon_red_ka)
+        android.graphics.Bitmap.createScaledBitmap(source, size, size, true).also {
+            if (it !== source) source.recycle()
+            cachedLargeIcon = it
+        }
+    }.getOrNull()
 }

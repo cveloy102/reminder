@@ -91,6 +91,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.zIndex
 import com.svalka.reminder.ui.theme.Inter
 import com.svalka.reminder.ui.theme.Mono
@@ -148,7 +149,11 @@ fun SvalkaScreen(
     onExport: () -> Unit,
     onChooseImport: () -> Unit,
     onDismissImport: () -> Unit,
-    onConfirmImport: (Boolean) -> Unit
+    onConfirmImport: (Boolean) -> Unit,
+    syncState: com.svalka.reminder.sync.SyncUi = com.svalka.reminder.sync.SyncUi(),
+    onSyncSignIn: (String, String, String, Boolean, (String?) -> Unit) -> Unit = { _, _, _, _, done -> done("Недоступно") },
+    onSyncNow: () -> Unit = {},
+    onSyncSignOut: () -> Unit = {}
 ) {
     val palette = markerColors()
     val focusManager = LocalFocusManager.current
@@ -184,6 +189,7 @@ fun SvalkaScreen(
     var reminderEditing by remember { mutableStateOf<ReminderTask?>(null) }
     var themeDialog by remember { mutableStateOf(false) }
     var backupDialog by remember { mutableStateOf(false) }
+    var syncDialog by remember { mutableStateOf(false) }
     var replaceConfirmation by remember { mutableStateOf(false) }
     var permanentDelete by remember { mutableStateOf<ReminderTask?>(null) }
     var pendingSwipe by remember { mutableStateOf<PendingSwipe?>(null) }
@@ -201,6 +207,21 @@ fun SvalkaScreen(
     val visible = if (trash) deleted else active
     val listState = rememberLazyListState()
     val thoughts = section == TaskList.THOUGHTS
+
+    // LazyColumn keeps the first visible row in place by its key. When that row moves far away
+    // (checked → it goes down to ГОТОВО, also when the change comes from the computer), the list would
+    // follow it to the bottom. Keep the screen where it was instead: same position, not the same row.
+    val visibleKeys = visible.map { "${if (trash) "trash" else "active"}:${it.id}" }
+    val shownKeys = remember { arrayOf(visibleKeys) }
+    if (visibleKeys != shownKeys[0]) {
+        val first = listState.firstVisibleItemIndex
+        val anchor = shownKeys[0].getOrNull(first)
+        val movedTo = if (anchor == null) -1 else visibleKeys.indexOf(anchor)
+        if (movedTo >= 0 && movedTo != first && visibleKeys.isNotEmpty()) {
+            listState.requestScrollToItem(first.coerceAtMost(visibleKeys.lastIndex), listState.firstVisibleItemScrollOffset)
+        }
+        shownKeys[0] = visibleKeys
+    }
 
     LaunchedEffect(sectionRequest) {
         sectionRequest?.let {
@@ -583,7 +604,7 @@ fun SvalkaScreen(
     }
 
     pendingLinkUrl?.let { url ->
-        Dialog(onDismissRequest = { pendingLinkUrl = null }) {
+        Dialog(onDismissRequest = { pendingLinkUrl = null }, properties = DialogProperties(dismissOnClickOutside = false)) {
             Surface(shape = RoundedCornerShape(16.dp), color = palette.sheet) {
                 Column(Modifier.fillMaxWidth().padding(24.dp)) {
                     Text("КАК НАЗВАТЬ ССЫЛКУ?", color = palette.foreground,
@@ -627,7 +648,7 @@ fun SvalkaScreen(
                         linkInput = ""
                         linkName = ""
                         pendingLinkUrl = null
-                    }, modifier = Modifier.fillMaxWidth().height(54.dp).testTag("saveLink"),
+                    }, modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp).testTag("saveLink"),
                         colors = ButtonDefaults.buttonColors(containerColor = palette.accent,
                             contentColor = palette.accentText), shape = RoundedCornerShape(8.dp)) {
                         Text("СОХРАНИТЬ ССЫЛКУ", fontWeight = FontWeight.ExtraBold, letterSpacing = 0.5.sp)
@@ -819,7 +840,7 @@ fun SvalkaScreen(
                             } else if (title.isNotBlank()) onUpdate(selected.copy(title = title))
                             editing = null
                         },
-                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = palette.accent, contentColor = palette.accentText),
                         shape = RoundedCornerShape(10.dp)
                     ) { Text("СОХРАНИТЬ ИЗМЕНЕНИЯ", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold,
@@ -837,13 +858,13 @@ fun SvalkaScreen(
                     Spacer(Modifier.height(26.dp))
                     Button(
                         onClick = { onUpdate(selected.copy(deletedAt = null)); editing = null },
-                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = palette.accent, contentColor = palette.accentText),
                         shape = RoundedCornerShape(10.dp)
                     ) { Text("ВОССТАНОВИТЬ", fontWeight = FontWeight.ExtraBold, letterSpacing = 0.8.sp) }
                     OutlinedButton(
                         onClick = { permanentDelete = selected; editing = null },
-                        modifier = Modifier.fillMaxWidth().height(54.dp).padding(top = 8.dp),
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp).padding(top = 8.dp),
                         border = BorderStroke(1.dp, palette.divider),
                         shape = RoundedCornerShape(10.dp)
                     ) {
@@ -915,6 +936,28 @@ fun SvalkaScreen(
                 Text("Копия сохраняет дела, покупки, ссылки и мысли. Восстановить её можно из файла в этом меню.",
                     color = palette.secondary, fontSize = 14.sp, lineHeight = 20.sp)
                 Spacer(Modifier.height(20.dp))
+                Caption("СИНХРОНИЗАЦИЯ", color = palette.foreground, size = 12.sp)
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    when {
+                        !syncState.signedIn -> "Свой сервер: записи будут одинаковыми на телефоне и компьютере."
+                        syncState.error != null -> "Ошибка: ${syncState.error}"
+                        else -> "Включена · ${syncState.email}"
+                    },
+                    color = if (syncState.error != null) palette.reminderText else palette.secondary,
+                    fontSize = 13.sp, lineHeight = 19.sp
+                )
+                Spacer(Modifier.height(12.dp))
+                OutlinedButton(
+                    onClick = { backupDialog = false; syncDialog = true },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag("openSync"),
+                    border = BorderStroke(1.dp, palette.divider),
+                    shape = RoundedCornerShape(8.dp)
+                ) { Text(if (syncState.signedIn) "НАСТРОИТЬ" else "ПОДКЛЮЧИТЬ СЕРВЕР",
+                    color = palette.foreground, fontSize = 13.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center) }
+                Spacer(Modifier.height(18.dp))
+                HorizontalDivider(color = palette.divider)
+                Spacer(Modifier.height(18.dp))
                 Caption("GOOGLE ДИСК", color = palette.foreground, size = 12.sp)
                 Spacer(Modifier.height(8.dp))
                 Text(
@@ -936,14 +979,14 @@ fun SvalkaScreen(
                 if (!cloudConnected) {
                     Button(
                         onClick = { backupDialog = false; onChooseCloudFile() },
-                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = palette.accent, contentColor = palette.accentText),
                         shape = RoundedCornerShape(8.dp)
                     ) { Text("ПОДКЛЮЧИТЬ GOOGLE ДИСК", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold) }
                 } else {
                     Button(
                         onClick = onSaveCloudNow, enabled = !cloudSaving,
-                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = palette.accent, contentColor = palette.accentText),
                         shape = RoundedCornerShape(8.dp)
                     ) { Text("СОХРАНИТЬ СЕЙЧАС", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold) }
@@ -964,20 +1007,28 @@ fun SvalkaScreen(
                 Spacer(Modifier.height(12.dp))
                 Button(
                     onClick = { backupDialog = false; onExport() },
-                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = palette.accent, contentColor = palette.accentText),
                     shape = RoundedCornerShape(8.dp)
                 ) { Text("СОХРАНИТЬ КОПИЮ", fontWeight = FontWeight.ExtraBold) }
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(
                     onClick = { backupDialog = false; onChooseImport() },
-                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
                     border = BorderStroke(1.dp, palette.divider),
                     shape = RoundedCornerShape(8.dp)
                 ) { Text("ВОССТАНОВИТЬ ИЗ ФАЙЛА", color = palette.foreground, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
             }
         }
     }
+
+    if (syncDialog) SyncDialog(
+        state = syncState,
+        onDismiss = { syncDialog = false },
+        onSignIn = onSyncSignIn,
+        onSyncNow = onSyncNow,
+        onSignOut = onSyncSignOut
+    )
 
     backupPreview?.let { preview ->
         val currentIds = tasks.mapTo(HashSet<String>()) { it.id }
@@ -997,14 +1048,14 @@ fun SvalkaScreen(
                     Spacer(Modifier.height(22.dp))
                     Button(
                         onClick = { onConfirmImport(false) }, enabled = newCount > 0,
-                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = palette.accent, contentColor = palette.accentText),
                         shape = RoundedCornerShape(8.dp)
                     ) { Text("ДОБАВИТЬ НОВЫЕ · $newCount", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold) }
                     Spacer(Modifier.height(8.dp))
                     OutlinedButton(
                         onClick = { replaceConfirmation = true },
-                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
                         border = BorderStroke(1.dp, palette.divider),
                         shape = RoundedCornerShape(8.dp)
                     ) { Text("ЗАМЕНИТЬ ВЕСЬ СПИСОК", color = palette.foreground, fontSize = 13.sp, fontWeight = FontWeight.Bold) }

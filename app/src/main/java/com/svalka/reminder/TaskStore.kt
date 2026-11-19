@@ -36,8 +36,12 @@ data class ReminderTask(
     val list: TaskList = TaskList.TASKS,
     val url: String? = null,
     val repeat: RepeatRule = RepeatRule.NONE,
-    val snoozeUntil: Long? = null
-)
+    val snoozeUntil: Long? = null,
+    /** Last edit time (ms) used by sync to pick the newest version; 0 in data from older versions. */
+    val updatedAt: Long = 0
+) {
+    val editedAt: Long get() = if (updatedAt > 0) updatedAt else createdAt
+}
 
 const val TRASH_RETENTION_MS = 30L * 24 * 60 * 60 * 1000
 
@@ -56,6 +60,7 @@ fun ReminderTask.toJson(): JSONObject = JSONObject().apply {
     put("url", url ?: JSONObject.NULL)
     put("repeat", repeat.storageValue)
     put("snoozeUntil", snoozeUntil ?: JSONObject.NULL)
+    put("updatedAt", updatedAt)
 }
 
 fun normalizeLinkUrl(value: String): String? {
@@ -132,7 +137,8 @@ class TaskStore(private val context: Context) {
         list = list,
         url = if (item.isNull("url")) null else item.optString("url").takeIf { it.isNotBlank() },
         repeat = RepeatRule.fromStorage(item.optString("repeat", "none")),
-        snoozeUntil = if (item.isNull("snoozeUntil")) null else item.getLong("snoozeUntil")
+        snoozeUntil = if (item.isNull("snoozeUntil")) null else item.getLong("snoozeUntil"),
+        updatedAt = item.optLong("updatedAt", 0L)
     )
 
     fun save(tasks: List<ReminderTask>) {

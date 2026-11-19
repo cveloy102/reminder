@@ -47,7 +47,8 @@ object TaskBackupCodec {
                     list = TaskList.fromStorage(item.optString("list", "tasks")),
                     url = if (item.isNull("url")) null else item.optString("url").takeIf { it.isNotBlank() },
                     repeat = RepeatRule.fromStorage(item.optString("repeat", "none")),
-                    snoozeUntil = item.optionalLong("snoozeUntil")
+                    snoozeUntil = item.optionalLong("snoozeUntil"),
+                    updatedAt = if (item.has("updatedAt")) item.optionalLong("updatedAt") ?: 0L else 0L
                 ))
             }
         }

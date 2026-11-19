@@ -1,0 +1,25 @@
+name: Sync server
+
+on:
+  push:
+    paths: [ "server/**", ".github/workflows/server.yml" ]
+  pull_request:
+    paths: [ "server/**", ".github/workflows/server.yml" ]
+  workflow_dispatch:
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check scripts
+        run: bash -n server/install.sh && bash -n server/svalka-sync.sh
+      - name: Docker image builds
+        run: docker build -q server
+      - name: Package
+        run: tar czf svalka-server.tgz server
+      - uses: actions/upload-artifact@v4
+        with:
+          name: svalka-server
+          path: svalka-server.tgz
+          retention-days: 30

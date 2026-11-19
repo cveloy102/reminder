@@ -1,0 +1,35 @@
+# СВАЛКА sync server. Settings come from .env (created by install.sh).
+services:
+  pocketbase:
+    build:
+      context: .
+      args:
+        PB_VERSION: ${PB_VERSION:-0.40.6}
+    image: svalka-sync:${PB_VERSION:-0.40.6}
+    container_name: svalka-sync
+    restart: unless-stopped
+    environment:
+      SVALKA_ALLOW_SIGNUP: ${SVALKA_ALLOW_SIGNUP:-false}
+      TZ: ${TZ:-Europe/Moscow}
+    volumes:
+      - ./pb_data:/pb/pb_data
+    # Listens only on this machine by default; a reverse proxy (Caddy below, nginx, or the panel) serves HTTPS.
+    ports:
+      - "${SVALKA_BIND:-127.0.0.1}:${SVALKA_PORT:-8090}:8090"
+
+  # Optional HTTPS with automatic Let's Encrypt certificates. Enabled with: docker compose --profile caddy up -d
+  # Needs ports 80 and 443 free on the server.
+  caddy:
+    image: caddy:2.8-alpine
+    profiles: ["caddy"]
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SVALKA_DOMAIN: ${SVALKA_DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy_data:/data
+    depends_on:
+      - pocketbase

@@ -1,0 +1,55 @@
+name: Windows app
+
+on:
+  push:
+    paths: [ "windows/**", "server/**", ".github/workflows/windows.yml" ]
+  pull_request:
+    paths: [ "windows/**", "server/**", ".github/workflows/windows.yml" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Tests
+        run: dotnet test windows/tests/Svalka.Core.Tests -c Release
+      - name: Publish single exe
+        run: >
+          dotnet publish windows/src/Svalka.Desktop -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:EnableCompressionInSingleFile=true -p:DebugType=none -o publish
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Svalka-windows
+          path: publish/Svalka.exe
+          retention-days: 30
+
+  # The sync engine against a real server (this repo's hooks and migrations), on Linux where PocketBase runs.
+  sync-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Start PocketBase
+        run: |
+          curl -fsSL -o pb.zip https://github.com/pocketbase/pocketbase/releases/download/v0.40.6/pocketbase_0.40.6_linux_amd64.zip
+          unzip -q pb.zip pocketbase
+          ./pocketbase superuser upsert ci@test.dev ci-secret-12345 --dir=pb_data
+          SVALKA_ALLOW_SIGNUP=true ./pocketbase serve --http=127.0.0.1:8090 --dir=pb_data \
+            --hooksDir=server/pb_hooks --migrationsDir=server/pb_migrations > pb.log 2>&1 &
+          for i in $(seq 30); do curl -fs http://127.0.0.1:8090/api/svalka/info && break; sleep 1; done
+      - name: Sync tests against the server
+        env:
+          SVALKA_TEST_SERVER: http://127.0.0.1:8090
+          SVALKA_TEST_SUPERUSER: ci@test.dev
+          SVALKA_TEST_SUPERUSER_PASSWORD: ci-secret-12345
+        run: dotnet test windows/tests/Svalka.Core.Tests -c Release --filter "FullyQualifiedName~SyncServerTests"
+      - name: Server log
+        if: always()
+        run: cat pb.log
