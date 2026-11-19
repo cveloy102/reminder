@@ -91,6 +91,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.zIndex
 import com.svalka.reminder.ui.theme.Inter
 import com.svalka.reminder.ui.theme.Mono
@@ -588,7 +589,7 @@ fun SvalkaScreen(
     }
 
     pendingLinkUrl?.let { url ->
-        Dialog(onDismissRequest = { pendingLinkUrl = null }) {
+        Dialog(onDismissRequest = { pendingLinkUrl = null }, properties = DialogProperties(dismissOnClickOutside = false)) {
             Surface(shape = RoundedCornerShape(16.dp), color = palette.sheet) {
                 Column(Modifier.fillMaxWidth().padding(24.dp)) {
                     Text("КАК НАЗВАТЬ ССЫЛКУ?", color = palette.foreground,
@@ -632,7 +633,7 @@ fun SvalkaScreen(
                         linkInput = ""
                         linkName = ""
                         pendingLinkUrl = null
-                    }, modifier = Modifier.fillMaxWidth().height(54.dp).testTag("saveLink"),
+                    }, modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp).testTag("saveLink"),
                         colors = ButtonDefaults.buttonColors(containerColor = palette.accent,
                             contentColor = palette.accentText), shape = RoundedCornerShape(8.dp)) {
                         Text("СОХРАНИТЬ ССЫЛКУ", fontWeight = FontWeight.ExtraBold, letterSpacing = 0.5.sp)
@@ -824,7 +825,7 @@ fun SvalkaScreen(
                             } else if (title.isNotBlank()) onUpdate(selected.copy(title = title))
                             editing = null
                         },
-                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = palette.accent, contentColor = palette.accentText),
                         shape = RoundedCornerShape(10.dp)
                     ) { Text("СОХРАНИТЬ ИЗМЕНЕНИЯ", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold,
@@ -842,13 +843,13 @@ fun SvalkaScreen(
                     Spacer(Modifier.height(26.dp))
                     Button(
                         onClick = { onUpdate(selected.copy(deletedAt = null)); editing = null },
-                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = palette.accent, contentColor = palette.accentText),
                         shape = RoundedCornerShape(10.dp)
                     ) { Text("ВОССТАНОВИТЬ", fontWeight = FontWeight.ExtraBold, letterSpacing = 0.8.sp) }
                     OutlinedButton(
                         onClick = { permanentDelete = selected; editing = null },
-                        modifier = Modifier.fillMaxWidth().height(54.dp).padding(top = 8.dp),
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp).padding(top = 8.dp),
                         border = BorderStroke(1.dp, palette.divider),
                         shape = RoundedCornerShape(10.dp)
                     ) {
@@ -934,11 +935,11 @@ fun SvalkaScreen(
                 Spacer(Modifier.height(12.dp))
                 OutlinedButton(
                     onClick = { backupDialog = false; syncDialog = true },
-                    modifier = Modifier.fillMaxWidth().height(52.dp).testTag("openSync"),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag("openSync"),
                     border = BorderStroke(1.dp, palette.divider),
                     shape = RoundedCornerShape(8.dp)
-                ) { Text(if (syncState.signedIn) "НАСТРОЙКИ СИНХРОНИЗАЦИИ" else "ПОДКЛЮЧИТЬ СЕРВЕР",
-                    color = palette.foreground, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
+                ) { Text(if (syncState.signedIn) "НАСТРОИТЬ" else "ПОДКЛЮЧИТЬ СЕРВЕР",
+                    color = palette.foreground, fontSize = 13.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center) }
                 Spacer(Modifier.height(18.dp))
                 HorizontalDivider(color = palette.divider)
                 Spacer(Modifier.height(18.dp))
@@ -963,14 +964,14 @@ fun SvalkaScreen(
                 if (!cloudConnected) {
                     Button(
                         onClick = { backupDialog = false; onChooseCloudFile() },
-                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = palette.accent, contentColor = palette.accentText),
                         shape = RoundedCornerShape(8.dp)
                     ) { Text("ПОДКЛЮЧИТЬ GOOGLE ДИСК", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold) }
                 } else {
                     Button(
                         onClick = onSaveCloudNow, enabled = !cloudSaving,
-                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = palette.accent, contentColor = palette.accentText),
                         shape = RoundedCornerShape(8.dp)
                     ) { Text("СОХРАНИТЬ СЕЙЧАС", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold) }
@@ -991,14 +992,14 @@ fun SvalkaScreen(
                 Spacer(Modifier.height(12.dp))
                 Button(
                     onClick = { backupDialog = false; onExport() },
-                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = palette.accent, contentColor = palette.accentText),
                     shape = RoundedCornerShape(8.dp)
                 ) { Text("СОХРАНИТЬ КОПИЮ", fontWeight = FontWeight.ExtraBold) }
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(
                     onClick = { backupDialog = false; onChooseImport() },
-                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
                     border = BorderStroke(1.dp, palette.divider),
                     shape = RoundedCornerShape(8.dp)
                 ) { Text("ВОССТАНОВИТЬ ИЗ ФАЙЛА", color = palette.foreground, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
@@ -1032,14 +1033,14 @@ fun SvalkaScreen(
                     Spacer(Modifier.height(22.dp))
                     Button(
                         onClick = { onConfirmImport(false) }, enabled = newCount > 0,
-                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = palette.accent, contentColor = palette.accentText),
                         shape = RoundedCornerShape(8.dp)
                     ) { Text("ДОБАВИТЬ НОВЫЕ · $newCount", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold) }
                     Spacer(Modifier.height(8.dp))
                     OutlinedButton(
                         onClick = { replaceConfirmation = true },
-                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
                         border = BorderStroke(1.dp, palette.divider),
                         shape = RoundedCornerShape(8.dp)
                     ) { Text("ЗАМЕНИТЬ ВЕСЬ СПИСОК", color = palette.foreground, fontSize = 13.sp, fontWeight = FontWeight.Bold) }

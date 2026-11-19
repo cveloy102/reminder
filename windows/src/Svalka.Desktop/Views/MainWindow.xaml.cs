@@ -399,7 +399,13 @@ public partial class MainWindow : Window
         Composer.Focus();
     }
 
-    private void Scrim_MouseDown(object sender, MouseButtonEventArgs e) => CloseDialog();
+    // A click next to a window with fields (sign-in, editor, link name) must not throw away what was typed.
+    private void Scrim_MouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (DialogHost.Content is DependencyObject content &&
+            (FindFirst<TextBox>(content) != null || FindFirst<PasswordBox>(content) != null)) return;
+        CloseDialog();
+    }
 
     private static T? FindFirst<T>(DependencyObject root) where T : DependencyObject
     {

@@ -39,6 +39,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.svalka.reminder.sync.SyncUi
 import com.svalka.reminder.ui.theme.Inter
 import com.svalka.reminder.ui.theme.Mono
@@ -100,7 +101,8 @@ fun SyncDialog(
         }
     }
 
-    Dialog(onDismissRequest = onDismiss) {
+    // Typed text must not be lost by an accidental tap next to the window: it closes only with НАЗАД or Back.
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(dismissOnClickOutside = false)) {
         Surface(shape = RoundedCornerShape(16.dp), color = palette.sheet, modifier = Modifier.testTag("syncDialog")) {
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(24.dp)) {
                 Label(if (state.signedIn) "[ СИНХРОНИЗАЦИЯ ]" else "[ СВОЙ СЕРВЕР ]", palette.reminderText)
@@ -123,14 +125,14 @@ fun SyncDialog(
                     }
                     Spacer(Modifier.height(18.dp))
                     Button(onClick = { go(false) }, enabled = !busy,
-                        modifier = Modifier.fillMaxWidth().height(52.dp).testTag("syncLogin"),
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag("syncLogin"),
                         colors = ButtonDefaults.buttonColors(containerColor = palette.accent, contentColor = palette.accentText),
                         shape = RoundedCornerShape(8.dp)) {
                         Text(if (busy) "ПОДКЛЮЧАЮСЬ…" else "ВОЙТИ", fontWeight = FontWeight.ExtraBold)
                     }
                     Spacer(Modifier.height(8.dp))
                     OutlinedButton(onClick = { go(true) }, enabled = !busy,
-                        modifier = Modifier.fillMaxWidth().height(52.dp), border = BorderStroke(1.dp, palette.divider),
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), border = BorderStroke(1.dp, palette.divider),
                         shape = RoundedCornerShape(8.dp)) {
                         Text("СОЗДАТЬ АККАУНТ", color = palette.foreground, fontWeight = FontWeight.Bold)
                     }
@@ -153,7 +155,7 @@ fun SyncDialog(
                         color = palette.secondary, fontSize = 13.sp, lineHeight = 19.sp)
                     Spacer(Modifier.height(18.dp))
                     Button(onClick = onSyncNow, enabled = !state.syncing,
-                        modifier = Modifier.fillMaxWidth().height(52.dp).testTag("syncNow"),
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag("syncNow"),
                         colors = ButtonDefaults.buttonColors(containerColor = palette.accent, contentColor = palette.accentText),
                         shape = RoundedCornerShape(8.dp)) {
                         Text("СИНХРОНИЗИРОВАТЬ СЕЙЧАС", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
