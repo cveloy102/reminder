@@ -17,11 +17,14 @@ namespace Svalka.Desktop.Views;
 /// grey Windows toast: a red stripe on the left, "[ ПОРА ]" in the mono font, the record's text and the
 /// same three buttons as on the phone. It never takes focus away from what the person is doing.
 /// Several cards stack upwards. A reminder stays until answered; a test card closes by itself.
+/// The window is an ordinary opaque one (no AllowsTransparency): a transparent layered WPF window loses ClearType
+/// and is composed as a bitmap, which made the text look soft. The shadow comes from the system (DWM).
 /// </summary>
 public sealed class ReminderToast : Window
 {
     private const double CardWidth = 400;
-    private const double Gap = 12;
+    private const double Gap = 10;
+    private const double Edge = 12;
     private static readonly List<ReminderToast> Open = new();
 
     private readonly DispatcherTimer? _autoClose;
@@ -55,19 +58,26 @@ public sealed class ReminderToast : Window
         TimeSpan? autoClose)
     {
         TaskId = taskId;
+        var res = Application.Current.Resources;
+        Brush B(string key) => (Brush)res[key];
+
         WindowStyle = WindowStyle.None;
         ResizeMode = ResizeMode.NoResize;
-        AllowsTransparency = true;
-        Background = Brushes.Transparent;
+        Background = B("B.Sheet");
         ShowInTaskbar = false;
         ShowActivated = false;
         Topmost = true;
         Width = CardWidth;
         SizeToContent = SizeToContent.Height;
-        Opacity = 0;
-
-        var res = Application.Current.Resources;
-        Brush B(string key) => (Brush)res[key];
+        // No caption or frame, but DWM still draws the window's shadow (it needs a sliver of extended frame).
+        System.Windows.Shell.WindowChrome.SetWindowChrome(this, new System.Windows.Shell.WindowChrome
+        {
+            CaptionHeight = 0,
+            ResizeBorderThickness = new Thickness(0),
+            GlassFrameThickness = new Thickness(0, 0, 0, 1),
+            CornerRadius = new CornerRadius(0),
+            UseAeroCaptionButtons = false
+        });
 
         var title = new TextBlock
         {
@@ -132,7 +142,7 @@ public sealed class ReminderToast : Window
             BorderThickness = new Thickness(1),
             Child = grid,
             Cursor = onOpen != null ? Cursors.Hand : null,
-            Margin = new Thickness(10) // room for the shadow
+            Opacity = 0
         };
         if (onOpen != null)
         {
@@ -143,18 +153,7 @@ public sealed class ReminderToast : Window
                 CloseOnce();
             };
         }
-        // The shadow is drawn by a separate empty border underneath: an effect on the card itself would turn
-        // its text into a bitmap, which looks blurry on scaled screens (125 %, 150 %).
-        var shadow = new Border
-        {
-            Background = B("B.Sheet"),
-            Margin = new Thickness(10),
-            Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 18, ShadowDepth = 3, Opacity = 0.28 }
-        };
-        var root = new Grid();
-        root.Children.Add(shadow);
-        root.Children.Add(card);
-        Content = root;
+        Content = card;
         UseLayoutRounding = true;
         SnapsToDevicePixels = true;
         TextOptions.SetTextFormattingMode(this, TextFormattingMode.Display);
@@ -174,11 +173,18 @@ public sealed class ReminderToast : Window
             var hwnd = new WindowInteropHelper(this).Handle;
             var style = GetWindowLong(hwnd, GwlExStyle);
             SetWindowLong(hwnd, GwlExStyle, style | WsExNoActivate | WsExToolWindow);
+            // Windows 11 would round the corners; the app's look is square. Older Windows ignores this.
+            var square = DwmCornerDoNotRound;
+            DwmSetWindowAttribute(hwnd, DwmWindowCornerPreference, ref square, sizeof(int));
         };
         Loaded += (_, _) =>
         {
             Arrange();
-            BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(160)));
+            // Fade the content, not the window. Text is drawn without ClearType only while the fade runs;
+            // afterwards the animation is removed so nothing semi-transparent stays above the text.
+            var fade = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(160));
+            fade.Completed += (_, _) => { card.BeginAnimation(OpacityProperty, null); card.Opacity = 1; };
+            card.BeginAnimation(OpacityProperty, fade);
             _autoClose?.Start();
         };
         Closed += (_, _) =>
@@ -201,16 +207,16 @@ public sealed class ReminderToast : Window
     private static void Arrange()
     {
         var area = SystemParameters.WorkArea;
-        var bottom = area.Bottom - 6;
+        var bottom = area.Bottom - Edge;
         foreach (var toast in Open.AsEnumerable().Reverse())
         {
             if (!toast.IsLoaded) continue;
             var height = toast.ActualHeight;
             // Whole physical pixels: a window at a fractional position renders its text blurred.
             var scale = VisualTreeHelper.GetDpi(toast).DpiScaleX;
-            toast.Left = Math.Round((area.Right - toast.Width - 6) * scale) / scale;
+            toast.Left = Math.Round((area.Right - toast.Width - Edge) * scale) / scale;
             toast.Top = Math.Round((bottom - height) * scale) / scale;
-            bottom -= height - 20 + Gap; // the 20 px of shadow margin may overlap
+            bottom -= height + Gap;
         }
     }
 
@@ -252,4 +258,10 @@ public sealed class ReminderToast : Window
 
     [DllImport("user32.dll")]
     private static extern int SetWindowLong(IntPtr hwnd, int index, int value);
+
+    private const int DwmWindowCornerPreference = 33;
+    private const int DwmCornerDoNotRound = 1;
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
 }
