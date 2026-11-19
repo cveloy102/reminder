@@ -26,3 +26,9 @@ jobs:
           name: Svalka-android-debug
           path: app/build/outputs/apk/*/*.apk
           retention-days: 30
+      # Small separate download with just the build that updates the installed app (after re-signing with the owner's key).
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Svalka-android-personal
+          path: app/build/outputs/apk/personal/*.apk
+          retention-days: 30
