@@ -6,14 +6,21 @@
 #   ./svalka-sync.sh user passwd EMAIL PASSWORD  change a password
 #   ./svalka-sync.sh signup on|off               open or close self sign-up in the apps
 #   ./svalka-sync.sh backup [DEST]               copy a consistent snapshot of the data (DEST: folder or user@host:path)
-#   ./svalka-sync.sh update                      rebuild with the current files and restart
+#   ./svalka-sync.sh update                      restart with the current files (Docker: rebuild)
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 [[ -f .env ]] && set -a && source .env && set +a
 PROFILE=()
 [[ "${SVALKA_CADDY:-false}" == true ]] && PROFILE=(--profile caddy)
 API="http://127.0.0.1:${SVALKA_PORT:-8090}"
-pbx() { docker compose exec -T pocketbase "$@"; }
+MODE="${SVALKA_MODE:-docker}"
+if [[ "$MODE" == native ]]; then
+  pb() { if command -v sudo >/dev/null; then sudo -u svalka ./pocketbase "$@" --dir=./pb_data; else runuser -u svalka -- ./pocketbase "$@" --dir=./pb_data; fi; }
+  restart() { systemctl restart svalka-sync; }
+else
+  pb() { docker compose exec -T pocketbase /pb/pocketbase "$@" --dir=/pb/pb_data; }
+  restart() { docker compose "${PROFILE[@]}" up -d "$@"; }
+fi
 command -v curl >/dev/null || { echo "curl is required" >&2; exit 1; }
 api() { curl -fsS -H "Content-Type: application/json" "$@"; }
 
@@ -21,14 +28,14 @@ superuser_token() {
   # A short-lived superuser token without knowing the admin password.
   local email="cli@svalka-sync.internal" pass
   pass="$(head -c 24 /dev/urandom | base64 | tr -d '/+=' | head -c 24)"
-  pbx /pb/pocketbase superuser upsert "$email" "$pass" --dir=/pb/pb_data >/dev/null
+  pb superuser upsert "$email" "$pass" >/dev/null
   api -d "{\"identity\":\"$email\",\"password\":\"$pass\"}" "$API/api/collections/_superusers/auth-with-password" \
     | sed -n 's/.*"token":"\([^"]*\)".*/\1/p'
 }
 
 case "${1:-}" in
   status)
-    docker compose ps
+    if [[ "$MODE" == native ]]; then systemctl --no-pager --lines=0 status svalka-sync || true; else docker compose ps; fi
     api "$API/api/svalka/info"; echo ;;
   user)
     [[ $# -eq 4 ]] || { echo "usage: $0 user add|passwd EMAIL PASSWORD" >&2; exit 2; }
@@ -46,7 +53,7 @@ case "${1:-}" in
     case "${2:-}" in on) v=true ;; off) v=false ;; *) echo "usage: $0 signup on|off" >&2; exit 2 ;; esac
     sed -i "s/^SVALKA_ALLOW_SIGNUP=.*/SVALKA_ALLOW_SIGNUP=$v/" .env
     export SVALKA_ALLOW_SIGNUP=$v
-    docker compose "${PROFILE[@]}" up -d
+    restart
     echo "Sign-up: $2" ;;
   backup)
     dest="${2:-./backups}"
@@ -57,7 +64,7 @@ case "${1:-}" in
     else mkdir -p "$dest" && cp "pb_data/backups/$name" "$dest/"; fi
     echo "Backup $name -> $dest" ;;
   update)
-    docker compose "${PROFILE[@]}" up -d --build ;;
+    if [[ "$MODE" == native ]]; then restart; else restart --build; fi ;;
   *)
     sed -n '2,10p' "$0"; exit 2 ;;
 esac
