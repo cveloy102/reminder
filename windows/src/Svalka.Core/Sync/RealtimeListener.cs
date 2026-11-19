@@ -7,11 +7,15 @@ namespace Svalka.Core.Sync;
 /// <summary>
 /// Keeps an event stream open to the server and raises <see cref="Changed"/> whenever any of the user's
 /// records changes on another device. Reconnects by itself with a growing pause.
+/// A stream that stays silent longer than <see cref="IdleLimit"/> is treated as dead and reopened: the server
+/// closes idle streams after 5 minutes, so a longer silence means the connection was dropped on the way
+/// without either side being told (sleep, Wi-Fi change, a proxy).
 /// </summary>
 public sealed class RealtimeListener : IDisposable
 {
     private readonly SyncClient _client;
     private readonly CancellationTokenSource _cts = new();
+    public static readonly TimeSpan IdleLimit = TimeSpan.FromMinutes(6);
 
     public RealtimeListener(SyncClient client) => _client = client;
 
@@ -31,6 +35,7 @@ public sealed class RealtimeListener : IDisposable
                 delay = TimeSpan.FromSeconds(2);
             }
             catch (OperationCanceledException) when (_cts.IsCancellationRequested) { return; }
+            catch (TimeoutException) { delay = TimeSpan.FromSeconds(2); /* silent stream: reopen soon */ }
             catch (Exception) { /* network trouble: retry below */ }
             ConnectionChanged?.Invoke(false);
             try { await Task.Delay(delay, _cts.Token); } catch (OperationCanceledException) { return; }
@@ -43,15 +48,20 @@ public sealed class RealtimeListener : IDisposable
         using var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
         using var request = new HttpRequestMessage(HttpMethod.Get, _client.BaseUrl + "/api/realtime");
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
-        using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+        using var idle = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        idle.CancelAfter(TimeSpan.FromSeconds(30));
+        using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, idle.Token);
         response.EnsureSuccessStatusCode();
-        using var stream = await response.Content.ReadAsStreamAsync(ct);
+        using var stream = await response.Content.ReadAsStreamAsync(idle.Token);
         using var reader = new StreamReader(stream, Encoding.UTF8);
         string? eventName = null;
         var data = new StringBuilder();
         while (!ct.IsCancellationRequested)
         {
-            var line = await reader.ReadLineAsync(ct);
+            idle.CancelAfter(IdleLimit);
+            string? line;
+            try { line = await reader.ReadLineAsync(idle.Token); }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested) { throw new TimeoutException(); }
             if (line == null) return; // server closed the stream
             if (line.Length == 0)
             {

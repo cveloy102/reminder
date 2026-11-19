@@ -143,7 +143,9 @@ class SyncApi(baseUrl: String, var token: String? = null) {
 
         private val JSON = "application/json; charset=utf-8".toMediaType()
         private val http = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).build()
-        private val streamHttp = http.newBuilder().readTimeout(0, TimeUnit.MILLISECONDS).build()
+        // The server closes an idle stream after 5 minutes, so 6 minutes of silence means the connection died
+        // on the way without anyone being told; the read then fails and the stream is reopened.
+        private val streamHttp = http.newBuilder().readTimeout(6, TimeUnit.MINUTES).build()
 
         private fun enc(value: String) = URLEncoder.encode(value, "UTF-8").replace("+", "%20")
 

@@ -32,6 +32,19 @@ public sealed class SyncService : ISyncHost, IDisposable
         Engine = new SyncEngine(this, LoadState());
         vm.RecordChanged += Engine.MarkDirty;
         vm.RecordPurged += Engine.MarkPurged;
+        // After sleep or a network switch the old realtime connection is usually dead: open a new one at once.
+        Microsoft.Win32.SystemEvents.PowerModeChanged += OnPowerModeChanged;
+        System.Net.NetworkInformation.NetworkChange.NetworkAvailabilityChanged += OnNetworkChanged;
+    }
+
+    private void OnPowerModeChanged(object? sender, Microsoft.Win32.PowerModeChangedEventArgs e)
+    {
+        if (e.Mode == Microsoft.Win32.PowerModes.Resume) Engine.Reconnect();
+    }
+
+    private void OnNetworkChanged(object? sender, System.Net.NetworkInformation.NetworkAvailabilityEventArgs e)
+    {
+        if (e.IsAvailable) Engine.Reconnect();
     }
 
     public SyncEngine Engine { get; }
@@ -90,7 +103,12 @@ public sealed class SyncService : ISyncHost, IDisposable
         catch (Exception) { return null; }
     }
 
-    public void Dispose() => Engine.Dispose();
+    public void Dispose()
+    {
+        Microsoft.Win32.SystemEvents.PowerModeChanged -= OnPowerModeChanged;
+        System.Net.NetworkInformation.NetworkChange.NetworkAvailabilityChanged -= OnNetworkChanged;
+        Engine.Dispose();
+    }
 
     private sealed class StoredState
     {

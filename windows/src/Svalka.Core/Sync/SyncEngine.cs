@@ -104,6 +104,17 @@ public sealed class SyncEngine : IDisposable
         });
     }
 
+    /// <summary>After sleep or a network change: reopen the realtime stream and sync right away.</summary>
+    public void Reconnect()
+    {
+        if (!SignedIn || _client == null) return;
+        _listener?.Dispose();
+        _listener = null;
+        LiveConnected = false;
+        StartBackground();
+        _debounce.Change(1000, Timeout.Infinite);
+    }
+
     public void SignOut()
     {
         Stop();
@@ -118,7 +129,7 @@ public sealed class SyncEngine : IDisposable
         _listener.Changed += () => _debounce.Change(400, Timeout.Infinite);
         _listener.ConnectionChanged += live => { LiveConnected = live; StatusChanged?.Invoke(); };
         _listener.Start();
-        _periodic.Change(TimeSpan.FromMinutes(3), TimeSpan.FromMinutes(3));
+        _periodic.Change(TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
         SetStatus(SyncStatus.Idle, null);
     }
 

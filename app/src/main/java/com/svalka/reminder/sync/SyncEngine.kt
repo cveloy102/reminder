@@ -75,6 +75,7 @@ class SyncEngine(context: Context, private val host: SyncHost, private val scope
     private var api: SyncApi? = null
     private var pending: Job? = null
     private var listener: Job? = null
+    private var ticker: Job? = null
     private var again = false
 
     private var cursor = ""
@@ -144,19 +145,38 @@ class SyncEngine(context: Context, private val host: SyncHost, private val scope
                 prefs.edit().putString("token", client.token).apply()
             }
             startLive()
+            startTicker()
             syncNow()
         }
     }
 
-    fun onBackground() = stopLive()
+    fun onBackground() {
+        stopLive()
+        ticker?.cancel()
+        ticker = null
+    }
 
-    /** Call after any local change; several quick changes become one sync. */
+    /** A light check every minute while the app is open, in case a realtime event was lost. */
+    private fun startTicker() {
+        if (ticker?.isActive == true) return
+        ticker = scope.launch {
+            while (isActive) {
+                delay(60_000)
+                if (signedIn) syncNow()
+            }
+        }
+    }
+
+    /**
+     * Call after any local change; several quick changes become one sync. Only the waiting is restarted:
+     * a sync already under way is never cancelled (records it writes would otherwise cancel its own upload).
+     */
     fun requestSync(delayMs: Long = 1500) {
         if (!signedIn) return
         pending?.cancel()
         pending = scope.launch {
             delay(delayMs)
-            syncNow()
+            scope.launch { syncNow() }
         }
     }
 
@@ -170,6 +190,9 @@ class SyncEngine(context: Context, private val host: SyncHost, private val scope
                 runOnce(client)
                 publish { copy(syncing = false, error = null, lastSyncAt = this@SyncEngine.lastSyncAt) }
             } while (again)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            publish { copy(syncing = false) }
+            throw e
         } catch (e: SyncException) {
             publish { copy(syncing = false, error = if (e.status == 401) "Нужно войти снова" else e.message) }
         } catch (e: Exception) {
