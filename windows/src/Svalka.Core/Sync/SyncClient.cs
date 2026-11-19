@@ -88,20 +88,31 @@ public sealed class SyncClient : IDisposable
     }
 
     /// <summary>Rows changed at or after the cursor, oldest first.</summary>
+    /// <remarks>
+    /// Pages are chained by the last row seen (its "updated" and id), not by page number: a row edited by another
+    /// device during the pull moves to the end of the order and would shift numbered pages, skipping a row.
+    /// </remarks>
     public async Task<List<RemoteItem>> PullAsync(string cursor, CancellationToken ct = default)
     {
         var result = new List<RemoteItem>();
-        var filter = cursor.Length == 0 ? "" : $"&filter={Uri.EscapeDataString($"updated >= \"{cursor}\"")}";
-        for (var page = 1; ; page++)
+        var filter = cursor.Length == 0 ? "" : $"updated >= \"{Quote(cursor)}\"";
+        while (true)
         {
+            var query = filter.Length == 0 ? "" : $"&filter={Uri.EscapeDataString(filter)}";
             var o = await SendAsync(HttpMethod.Get,
-                $"/api/collections/items/records?page={page}&perPage=200&sort=updated,id&skipTotal=1{filter}", null, ct);
+                $"/api/collections/items/records?perPage={PageSize}&sort=updated,id&skipTotal=1{query}", null, ct);
             var items = o["items"]!.AsArray();
             result.AddRange(items.Select(i => RemoteItem.FromJson(i!.AsObject())));
-            if (items.Count < 200) break;
+            if (items.Count < PageSize) break;
+            var last = result[^1];
+            filter = $"updated > \"{Quote(last.Updated)}\" || (updated = \"{Quote(last.Updated)}\" && id > \"{Quote(last.RecordId)}\")";
         }
         return result;
     }
+
+    public const int PageSize = 200;
+
+    private static string Quote(string? value) => (value ?? "").Replace("\\", "").Replace("\"", "");
 
     public async Task<RemoteItem> CreateAsync(JsonObject body, CancellationToken ct = default) =>
         RemoteItem.FromJson(await SendAsync(HttpMethod.Post, "/api/collections/items/records", body, ct));

@@ -218,9 +218,11 @@ class MainActivity : ComponentActivity() {
     private fun purgeTrash() {
         val kept = purgeExpiredTrash(tasks, System.currentTimeMillis())
         if (kept.size != tasks.size) {
-            tasks.filter { it !in kept }.forEach { reminders.cancel(it.id) }
+            val removed = tasks.filter { it !in kept }
+            removed.forEach { reminders.cancel(it.id) }
             tasks = kept
             store.save(tasks)
+            if (::sync.isInitialized) sync.markPurged(removed.map { it.id })
         }
     }
 
@@ -257,7 +259,7 @@ class MainActivity : ComponentActivity() {
         val moved = tasks.filter { it.list == list && it.completed && it.deletedAt == null }
         if (moved.isEmpty()) return
         val ids = moved.mapTo(HashSet()) { it.id }
-        tasks = tasks.map { if (it.id in ids) it.copy(deletedAt = now) else it }
+        tasks = tasks.map { if (it.id in ids) it.copy(deletedAt = now, updatedAt = now) else it }
         store.save(tasks)
         saveToCloud(manual = false)
         moved.forEach { reminders.cancel(it.id) }
@@ -339,7 +341,10 @@ class MainActivity : ComponentActivity() {
         val to = active.indexOfFirst { it.id == toId }
         if (from < 0 || to < 0 || active[from].completed != active[to].completed) return
         val reordered = active.toMutableList().apply {
-            val moved = removeAt(from).copy(pinned = !active[from].completed && active[to].pinned)
+            val moved = removeAt(from).let { t ->
+                val pinned = !active[from].completed && active[to].pinned
+                if (t.pinned == pinned) t else t.copy(pinned = pinned, updatedAt = System.currentTimeMillis())
+            }
             val target = indexOfFirst { it.id == toId }
             add(target + if (from < to) 1 else 0, moved)
         }
@@ -412,10 +417,17 @@ class MainActivity : ComponentActivity() {
 
     private fun restoreBackup(replace: Boolean) {
         val imported = backupPreview?.tasks ?: return
+        // Restored records keep the backup's old edit times; sync would let the server's newer copies win and
+        // quietly undo the restore. A restore is a new edit, so changed records are stamped with now.
+        val now = System.currentTimeMillis()
+        val before = tasks.associateBy { it.id }
         val result = (if (replace) imported else TaskBackupCodec.merge(tasks, imported))
             .map { it.normalized() }
+            .map { if (before[it.id] == it) it else it.copy(updatedAt = now) }
         try {
             store.save(result)
+            val kept = result.mapTo(HashSet()) { it.id }
+            sync.markPurged(before.keys.filter { it !in kept })
             tasks.forEach { reminders.cancel(it.id) }
             tasks = result
             saveToCloud(manual = false)
@@ -430,6 +442,7 @@ class MainActivity : ComponentActivity() {
     private fun deletePermanently(task: ReminderTask) {
         tasks = tasks.filterNot { it.id == task.id }
         store.save(tasks)
+        sync.markPurged(listOf(task.id))
         saveToCloud(manual = false)
         reminders.cancel(task.id)
     }

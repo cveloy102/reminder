@@ -77,6 +77,8 @@ class SyncEngine(context: Context, private val host: SyncHost, private val scope
     private var listener: Job? = null
     private var ticker: Job? = null
     private var again = false
+    /** False while the app is in the background: the in-memory list may then be stale, so no sync runs. */
+    private var foreground = false
 
     private var cursor = ""
     private var lastSyncAt = 0L
@@ -138,6 +140,7 @@ class SyncEngine(context: Context, private val host: SyncHost, private val scope
 
     /** Call from onStart: refresh the login, open the realtime stream and sync. */
     fun onForeground() {
+        foreground = true
         val client = api ?: return
         scope.launch {
             runCatching {
@@ -151,6 +154,9 @@ class SyncEngine(context: Context, private val host: SyncHost, private val scope
     }
 
     fun onBackground() {
+        foreground = false
+        pending?.cancel()
+        pending = null
         stopLive()
         ticker?.cancel()
         ticker = null
@@ -162,7 +168,7 @@ class SyncEngine(context: Context, private val host: SyncHost, private val scope
         ticker = scope.launch {
             while (isActive) {
                 delay(60_000)
-                if (signedIn) syncNow()
+                if (signedIn && foreground) syncNow()
             }
         }
     }
@@ -172,12 +178,23 @@ class SyncEngine(context: Context, private val host: SyncHost, private val scope
      * a sync already under way is never cancelled (records it writes would otherwise cancel its own upload).
      */
     fun requestSync(delayMs: Long = 1500) {
-        if (!signedIn) return
+        if (!signedIn || !foreground) return
         pending?.cancel()
         pending = scope.launch {
             delay(delayMs)
             scope.launch { syncNow() }
         }
+    }
+
+    /** Records deleted for good on this phone: the server is told, so every device removes them. */
+    fun markPurged(ids: Collection<String>) {
+        if (ids.isEmpty()) return
+        for (id in ids) {
+            if (id in known || id in recordIds) purged += id
+            dirty -= id
+            known.remove(id)
+        }
+        saveState()
     }
 
     suspend fun syncNow() {
@@ -228,8 +245,18 @@ class SyncEngine(context: Context, private val host: SyncHost, private val scope
             dirty += t.id
             if (previous != null && JSONObject(previous).optLong("updatedAt") >= t.updatedAt) bump += t.id
         }
+        // A record that vanished without markPurged: if it was in the trash, the trash was cleared (for example
+        // before sync started) and it is purged everywhere. Anything else is never deleted on other devices on a
+        // guess: it may be missing only because a data file was damaged. Pull everything again to bring it back.
         val localIds = local.mapTo(HashSet()) { it.id }
-        for (id in known.keys.toList()) if (id !in localIds) { purged += id; dirty -= id; known.remove(id) }
+        var lost = false
+        for (id in known.keys.toList()) {
+            if (id in localIds) continue
+            val wasInTrash = runCatching { !JSONObject(known.getValue(id)).isNull("deletedAt") }.getOrDefault(false)
+            if (wasInTrash) { purged += id; dirty -= id } else lost = true
+            known.remove(id)
+        }
+        if (lost) cursor = ""
         if (bump.isNotEmpty()) {
             local = local.map { if (it.id in bump) it.copy(updatedAt = now) else it }
             host.replace(local)
@@ -251,10 +278,18 @@ class SyncEngine(context: Context, private val host: SyncHost, private val scope
 
         // 3. Push local edits and permanent deletes.
         val current = host.snapshot().associateBy { it.id }
+        var rejected: String? = null
         for (id in dirty.toList()) {
             val task = current[id] ?: run { dirty.remove(id); null } ?: continue
-            if (upload(client, task, owner, purge = false)) known[id] = task.toJson().toString()
-            dirty.remove(id)
+            try {
+                if (upload(client, task, owner, purge = false)) known[id] = task.toJson().toString()
+                dirty.remove(id)
+            } catch (e: SyncException) {
+                // The server refused this one record (for example, text over its size limit). Keep it for a later
+                // try and go on: one bad record must not stop every other change from syncing.
+                if (e.status != 400) throw e
+                if (rejected == null) rejected = "Сервер не принял запись «${task.title.take(40)}»: ${e.message}"
+            }
         }
         for (id in purged.toList()) {
             upload(client, ReminderTask(id, "", 0L, updatedAt = System.currentTimeMillis()), owner, purge = true)
@@ -263,6 +298,7 @@ class SyncEngine(context: Context, private val host: SyncHost, private val scope
         }
         lastSyncAt = System.currentTimeMillis()
         saveState()
+        rejected?.let { throw SyncException(it, 400) }
     }
 
     /** Returns false when the server kept a newer version (which is then brought here). */
@@ -280,7 +316,10 @@ class SyncEngine(context: Context, private val host: SyncHost, private val scope
                 }
             } catch (e: SyncException) {
                 if (e.status != 409) throw e
-                client.find(task.id) ?: throw e
+                val newer = client.find(task.id) ?: throw e
+                if (!purge || newer.purged) newer
+                // A delete for good must win even over a newer edit (or a device whose clock runs ahead).
+                else client.update(newer.recordId, body.put("updatedAt", maxOf(newer.task.editedAt + 1, System.currentTimeMillis())))
             }
         }
         recordIds[task.id] = saved.recordId
@@ -300,7 +339,7 @@ class SyncEngine(context: Context, private val host: SyncHost, private val scope
             var pause = 2_000L
             while (isActive) {
                 try {
-                    client.listen { event, data ->
+                    client.listen({ isActive }) { event, data ->
                         if (event == "PB_CONNECT") {
                             val clientId = runCatching { JSONObject(data).getString("clientId") }.getOrNull() ?: return@listen
                             client.subscribe(clientId)
@@ -319,8 +358,11 @@ class SyncEngine(context: Context, private val host: SyncHost, private val scope
     }
 
     private fun stopLive() {
+        // Cancelling the coroutine does not interrupt OkHttp's blocking read: close the stream itself too
+        // (after the cancel, so a stream opened in between sees the cancelled job and closes at once).
         listener?.cancel()
         listener = null
+        api?.closeStream()
         publish { copy(live = false) }
     }
 

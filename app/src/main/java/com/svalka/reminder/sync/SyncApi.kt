@@ -5,6 +5,7 @@ import com.svalka.reminder.ReminderTask
 import com.svalka.reminder.TaskList
 import org.json.JSONArray
 import org.json.JSONObject
+import okhttp3.Call
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -58,16 +59,23 @@ class SyncApi(baseUrl: String, var token: String? = null) {
         return record.getString("id") to record.optString("email")
     }
 
+    /**
+     * Rows changed at or after [cursor], oldest first. Pages are chained by the last row seen (its "updated" and
+     * id), not by page number: a row edited elsewhere during the pull moves to the end and would shift numbered
+     * pages, so one row would be skipped.
+     */
     fun pull(cursor: String): List<RemoteItem> {
         val result = mutableListOf<RemoteItem>()
-        val filter = if (cursor.isEmpty()) "" else "&filter=" + enc("updated >= \"$cursor\"")
-        var page = 1
+        var filter = if (cursor.isEmpty()) "" else "updated >= \"${quote(cursor)}\""
         while (true) {
-            val items = request("GET", "/api/collections/items/records?page=$page&perPage=200&sort=updated,id&skipTotal=1$filter", null)
+            val query = if (filter.isEmpty()) "" else "&filter=" + enc(filter)
+            val items = request("GET", "/api/collections/items/records?perPage=$PAGE&sort=updated,id&skipTotal=1$query", null)
                 .getJSONArray("items")
             for (i in 0 until items.length()) result += fromJson(items.getJSONObject(i))
-            if (items.length() < 200) break
-            page++
+            if (items.length() < PAGE) break
+            val last = result.last()
+            val at = quote(last.updated)
+            filter = "updated > \"$at\" || (updated = \"$at\" && id > \"${quote(last.recordId)}\")"
         }
         return result
     }
@@ -96,8 +104,11 @@ class SyncApi(baseUrl: String, var token: String? = null) {
                 val text = response.body?.string().orEmpty()
                 val json = runCatching { if (text.isBlank()) JSONObject() else JSONObject(text) }.getOrNull()
                 if (!response.isSuccessful) {
+                    val details = json?.optJSONObject("data")?.let { data ->
+                        data.keys().asSequence().joinToString("; ") { "$it: ${data.optJSONObject(it)?.optString("message").orEmpty()}" }
+                    }?.takeIf { it.isNotBlank() }
                     val message = if (response.code == 401) "Нужно войти снова"
-                        else json?.optString("message")?.takeIf { it.isNotBlank() }
+                        else json?.optString("message")?.takeIf { it.isNotBlank() }?.let { if (details != null) "$it ($details)" else it }
                     throw SyncException(message ?: "Ошибка сервера ${response.code}", response.code)
                 }
                 return json ?: JSONObject()
@@ -111,10 +122,13 @@ class SyncApi(baseUrl: String, var token: String? = null) {
         }
     }
 
-    /** Opens the realtime event stream; blocks while it is open, calling [onEvent] with (event, data). */
-    fun listen(onEvent: (String, String) -> Unit) {
+    /** Opens the realtime event stream; blocks while it is open, calling [onEvent] with (event, data). [isOpen] false stops it. */
+    fun listen(isOpen: () -> Boolean, onEvent: (String, String) -> Unit) {
         val request = Request.Builder().url("$baseUrl/api/realtime").header("Accept", "text/event-stream").build()
-        streamHttp.newCall(request).execute().use { response ->
+        val call = streamHttp.newCall(request)
+        stream = call
+        if (!isOpen()) call.cancel() // stopped between the caller's check and here
+        call.execute().use { response ->
             if (!response.isSuccessful) throw SyncException("Ошибка сервера ${response.code}", response.code)
             val source = response.body?.source() ?: return
             var event: String? = null
@@ -134,7 +148,18 @@ class SyncApi(baseUrl: String, var token: String? = null) {
         }
     }
 
+    @Volatile private var stream: Call? = null
+
+    /** Closes the realtime stream opened by [listen], which then returns or throws at once. */
+    fun closeStream() {
+        stream?.cancel()
+        stream = null
+    }
+
     companion object {
+        private const val PAGE = 200
+        private fun quote(value: String) = value.replace("\\", "").replace("\"", "")
+
         fun normalizeUrl(value: String?): String? {
             var clean = value.orEmpty().trim().trimEnd('/')
             if (clean.isEmpty() || clean.any { it.isWhitespace() }) return null

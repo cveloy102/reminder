@@ -13,8 +13,8 @@ android {
         applicationId = "com.svalka.reminder"
         minSdk = 24
         targetSdk = 37
-        versionCode = 8
-        versionName = "1.9"
+        versionCode = 9
+        versionName = "2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

@@ -249,6 +249,7 @@ public sealed class SyncEngine : IDisposable
             dirty = _state.Dirty.ToArray();
             purged = _state.Purged.ToArray();
         }
+        string? rejected = null;
         if (dirty.Length > 0)
         {
             var local = (await _host.SnapshotAsync()).ToDictionary(t => t.Id);
@@ -257,6 +258,13 @@ public sealed class SyncEngine : IDisposable
                 lock (_lock) _state.Dirty.Remove(id);
                 if (!local.TryGetValue(id, out var task)) continue;
                 try { await UploadAsync(client, task, purged: false); }
+                catch (SyncException e) when (e.Status == HttpStatusCode.BadRequest)
+                {
+                    // The server refused this one record (for example, text over its size limit). Keep it for a later
+                    // try and go on with the rest: one bad record must not stop every other change from syncing.
+                    lock (_lock) _state.Dirty.Add(id);
+                    rejected ??= RejectedMessage(task, e);
+                }
                 catch
                 {
                     lock (_lock) _state.Dirty.Add(id);
@@ -276,6 +284,13 @@ public sealed class SyncEngine : IDisposable
         }
         lock (_lock) _state.LastSyncAt = Clock.NowMs();
         _host.SaveState(_state);
+        if (rejected != null) throw new SyncException(rejected, HttpStatusCode.BadRequest);
+    }
+
+    internal static string RejectedMessage(ReminderTask task, SyncException e)
+    {
+        var title = task.Title.Length > 40 ? task.Title[..40] + "…" : task.Title;
+        return $"Сервер не принял запись «{title}»: {e.Message}";
     }
 
     private async Task UploadAsync(SyncClient client, ReminderTask task, bool purged)
@@ -293,6 +308,7 @@ public sealed class SyncEngine : IDisposable
             catch (SyncException e) when (e.Status == HttpStatusCode.NotFound) { /* removed on the server: create again */ }
             catch (SyncException e) when (e.Status == HttpStatusCode.Conflict)
             {
+                if (purged) { await ForcePurgeAsync(client, task); return; }
                 await TakeServerVersionAsync(client, task.Id);
                 return;
             }
@@ -306,11 +322,24 @@ public sealed class SyncEngine : IDisposable
             try { saved = await client.UpdateAsync(existing.RecordId, body); }
             catch (SyncException conflict) when (conflict.Status == HttpStatusCode.Conflict)
             {
+                if (purged) { await ForcePurgeAsync(client, task); return; }
                 await TakeServerVersionAsync(client, task.Id);
                 return;
             }
         }
         lock (_lock) _state.RecordIds[task.Id] = saved.RecordId;
+    }
+
+    /// <summary>
+    /// A delete for good must win even over a newer edit (or a device whose clock runs ahead): send it again
+    /// with an edit time just after the server's, so the server accepts it and every device removes the record.
+    /// </summary>
+    private async Task ForcePurgeAsync(SyncClient client, ReminderTask tombstone)
+    {
+        var remote = await client.FindAsync(tombstone.Id);
+        if (remote == null || remote.Purged) return;
+        var stamp = Math.Max(remote.Task.EditedAt + 1, Clock.NowMs());
+        await client.UpdateAsync(remote.RecordId, RemoteItem.ToJson(tombstone with { UpdatedAt = stamp }, _state.UserId!, purged: true));
     }
 
     /// <summary>The server refused an older edit: bring its newer version here.</summary>

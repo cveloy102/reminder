@@ -136,6 +136,69 @@ public class SyncServerTests
         Assert.Empty(stranger.Tasks);
     }
 
+    private static string? Server() => Environment.GetEnvironmentVariable("SVALKA_TEST_SERVER") is { Length: > 0 } s ? s : null;
+    private static string NewEmail() => $"t{Guid.NewGuid():N}@test.dev";
+
+    [Fact] public async Task DeleteForGoodWinsOverNewerEditElsewhere()
+    {
+        if (Server() is not { } server) return;
+        var email = NewEmail();
+        var pc = new Host();
+        pc.Tasks.Add(new ReminderTask("d1", "Удалю навсегда", 100, UpdatedAt: 100));
+        var phone = new Host();
+        using var pcSync = new SyncEngine(pc, new SyncState());
+        using var phoneSync = new SyncEngine(phone, new SyncState());
+        await pcSync.SignInAsync(server, email, "secret-12345", register: true);
+        await phoneSync.SignInAsync(server, email, "secret-12345", register: false);
+        Assert.Contains(phone.Tasks, t => t.Id == "d1");
+
+        // The PC's clock runs ten minutes ahead: its edit carries a later time than the phone's delete.
+        pc.Edit(pcSync, pc.Tasks[0] with { Title = "Правка с ПК", UpdatedAt = Clock.NowMs() + 600_000 });
+        await pcSync.SyncNowAsync();
+        await phoneSync.SyncNowAsync();
+        phone.Purge(phoneSync, "d1");
+        await phoneSync.SyncNowAsync();
+        Assert.Equal(SyncStatus.Idle, phoneSync.Status);
+        await pcSync.SyncNowAsync();
+        Assert.DoesNotContain(pc.Tasks, t => t.Id == "d1");
+    }
+
+    [Fact] public async Task OneRejectedRecordDoesNotStopTheRest()
+    {
+        if (Server() is not { } server) return;
+        var email = NewEmail();
+        var phone = new Host();
+        phone.Tasks.Add(new ReminderTask("big", new string('а', 10_001), 100, List: TaskList.Thoughts, UpdatedAt: 100));
+        phone.Tasks.Add(new ReminderTask("ok", "Обычная запись", 200, UpdatedAt: 200));
+        using var phoneSync = new SyncEngine(phone, new SyncState());
+        await phoneSync.SignInAsync(server, email, "secret-12345", register: true);
+        Assert.Equal(SyncStatus.Error, phoneSync.Status);
+        Assert.Contains("не принял", phoneSync.LastError);
+        Assert.Contains("big", phoneSync.State.Dirty);
+
+        var pc = new Host();
+        using var pcSync = new SyncEngine(pc, new SyncState());
+        await pcSync.SignInAsync(server, email, "secret-12345", register: false);
+        Assert.Contains(pc.Tasks, t => t.Id == "ok");
+        Assert.DoesNotContain(pc.Tasks, t => t.Id == "big");
+    }
+
+    [Fact] public async Task PullGoesAcrossPages()
+    {
+        if (Server() is not { } server) return;
+        var email = NewEmail();
+        var pc = new Host();
+        for (var i = 0; i < SyncClient.PageSize * 2 + 50; i++) pc.Tasks.Add(new ReminderTask($"r{i}", $"Запись {i}", 1000 + i, UpdatedAt: 1000 + i));
+        using var pcSync = new SyncEngine(pc, new SyncState());
+        await pcSync.SignInAsync(server, email, "secret-12345", register: true);
+        Assert.Equal(SyncStatus.Idle, pcSync.Status);
+
+        var phone = new Host();
+        using var phoneSync = new SyncEngine(phone, new SyncState());
+        await phoneSync.SignInAsync(server, email, "secret-12345", register: false);
+        Assert.Equal(pc.Tasks.Select(t => t.Id).OrderBy(x => x), phone.Tasks.Select(t => t.Id).OrderBy(x => x));
+    }
+
     [Fact] public async Task WrongPasswordIsReported()
     {
         var server = Environment.GetEnvironmentVariable("SVALKA_TEST_SERVER");

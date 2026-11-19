@@ -38,7 +38,7 @@ public sealed partial class MainViewModel : ObservableObject
         _tasks = loaded.Select(t => t.Normalized()).ToList();
         if (!_tasks.SequenceEqual(loaded)) store.Save(_tasks);
         RecoveredFiles = store.RecoveredFiles;
-        PurgeTrash();
+        // Expired trash is cleared in Start(), once sync listens for RecordPurged: a purge raised here would be lost.
 
         _reminderTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
         _reminderTimer.Tick += (_, _) => CheckReminders();
@@ -161,6 +161,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     public void Start()
     {
+        PurgeTrash();
         CheckReminders();
         _reminderTimer.Start();
     }
@@ -408,7 +409,12 @@ public sealed partial class MainViewModel : ObservableObject
 
     public void RestoreBackup(TaskBackup backup, bool replace)
     {
-        var result = (replace ? backup.Tasks : TaskBackupCodec.Merge(_tasks, backup.Tasks)).Select(t => t.Normalized()).ToList();
+        var before = _tasks.ToDictionary(t => t.Id);
+        // Restored records carry the backup's old edit times; the server would refuse them as older than its copy
+        // and sync would bring the newer version straight back. A restore is a new edit: stamp it with now.
+        var stamp = Clock.NowMs();
+        var result = (replace ? backup.Tasks : TaskBackupCodec.Merge(_tasks, backup.Tasks)).Select(t => t.Normalized())
+            .Select(t => before.TryGetValue(t.Id, out var old) && old == t ? t : t with { UpdatedAt = stamp }).ToList();
         try
         {
             _store.Save(result);
@@ -418,7 +424,6 @@ public sealed partial class MainViewModel : ObservableObject
             Message?.Invoke("Не удалось восстановить: " + error.Message);
             return;
         }
-        var before = _tasks.ToDictionary(t => t.Id);
         _tasks = result;
         PurgeTrash();
         Commit();

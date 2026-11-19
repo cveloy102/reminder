@@ -1,7 +1,12 @@
 FROM alpine:3.20
 ARG PB_VERSION=0.40.6
-RUN wget -q "https://github.com/pocketbase/pocketbase/releases/download/v${PB_VERSION}/pocketbase_${PB_VERSION}_linux_amd64.zip" -O /tmp/pb.zip \
- && unzip /tmp/pb.zip pocketbase -d /pb && rm /tmp/pb.zip && chmod +x /pb/pocketbase
+# TARGETARCH is set by Docker (amd64 or arm64); the download is checked against the release checksums.
+ARG TARGETARCH
+RUN set -e; ARCH="${TARGETARCH:-amd64}"; ZIP="pocketbase_${PB_VERSION}_linux_${ARCH}.zip"; \
+    URL="https://github.com/pocketbase/pocketbase/releases/download/v${PB_VERSION}"; \
+    cd /tmp && wget -q "$URL/$ZIP" "$URL/checksums.txt" \
+ && grep " $ZIP\$" checksums.txt | sha256sum -c -s - \
+ && unzip "$ZIP" pocketbase -d /pb && rm "$ZIP" checksums.txt && chmod +x /pb/pocketbase
 COPY pb_migrations /pb/pb_migrations
 COPY pb_hooks /pb/pb_hooks
 EXPOSE 8090

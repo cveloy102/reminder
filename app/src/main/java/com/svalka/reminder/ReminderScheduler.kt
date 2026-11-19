@@ -79,7 +79,8 @@ class ReminderScheduler(private val context: Context) {
             if (at > now) { schedule(task); return@map task }
             val handled = if (now - at <= MISSED_REMINDER_WINDOW) postReminder(context, task) else true
             if (!handled) return@map task
-            task.afterDelivery(now).also { schedule(it) }
+            // Stamped with the time of the change, so sync orders it correctly against edits on other devices.
+            task.afterDelivery(now).let { if (it == task) it else it.copy(updatedAt = now) }.also { schedule(it) }
         }
         if (updated != tasks) TaskStore(context).save(updated)
         return updated
@@ -93,9 +94,11 @@ class ReminderScheduler(private val context: Context) {
         schedule(updated)
     }
 
+    /** Saves a change made outside the app's screen (notification buttons, delivery), stamped with its time for sync. */
     fun replaceInStore(task: ReminderTask) {
         val store = TaskStore(context)
-        store.save(store.load().map { if (it.id == task.id) task else it })
+        val now = System.currentTimeMillis()
+        store.save(store.load().map { if (it.id == task.id) (if (it == task) it else task.copy(updatedAt = now)) else it })
         TaskEvents.notifyChanged()
     }
 
