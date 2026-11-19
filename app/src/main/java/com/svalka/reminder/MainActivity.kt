@@ -16,6 +16,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import com.svalka.reminder.sync.SyncEngine
+import com.svalka.reminder.sync.SyncHost
+import com.svalka.reminder.sync.SyncUi
+import kotlinx.coroutines.flow.drop
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
 import com.svalka.reminder.ui.theme.SvalkaTheme
@@ -49,6 +54,8 @@ class MainActivity : ComponentActivity() {
     private var requestExactAfterNotificationPermission = false
     private var sectionRequest by mutableStateOf<TaskList?>(null)
     private var cloudSavesInFlight = 0
+    private lateinit var sync: SyncEngine
+    private var syncUi by mutableStateOf(SyncUi())
 
     private val chooseCloudFile = registerForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
@@ -76,8 +83,7 @@ class MainActivity : ComponentActivity() {
         if (uri != null) try {
             val data = TaskBackupCodec.encode(tasks).toByteArray(Charsets.UTF_8)
             require(data.size <= TaskBackupCodec.MAX_BYTES) { "Список слишком большой для копии" }
-            contentResolver.openOutputStream(uri, "wt")?.use { it.write(data) }
-                ?: throw IllegalStateException("Не удалось открыть файл")
+            writeDocument(uri, data)
             Toast.makeText(this, "Копия сохранена", Toast.LENGTH_SHORT).show()
         } catch (error: Exception) {
             Toast.makeText(this, "Не удалось сохранить: ${error.message}", Toast.LENGTH_LONG).show()
@@ -118,6 +124,12 @@ class MainActivity : ComponentActivity() {
             ?.takeIf { saved -> contentResolver.persistedUriPermissions.any { it.uri == saved && it.isWritePermission } }
         lastCloudSaveAt = cloudSettings.getLong("last_save", 0L)
         reminders.createChannel()
+        sync = SyncEngine(this, object : SyncHost {
+            override fun snapshot(): List<ReminderTask> = tasks
+            override fun replace(tasks: List<ReminderTask>) = applyFromSync(tasks)
+        }, lifecycleScope) { syncUi = it }
+        // Any change of the records (edits here, notification buttons, other screens) triggers a sync.
+        lifecycleScope.launch { snapshotFlow { tasks }.drop(1).collect { sync.requestSync() } }
         enableEdgeToEdge()
         setContent {
             val dark = when (themeMode) {
@@ -160,7 +172,11 @@ class MainActivity : ComponentActivity() {
                     onExport = ::startExport,
                     onChooseImport = { importFile.launch(arrayOf("*/*")) },
                     onDismissImport = { backupPreview = null },
-                    onConfirmImport = ::restoreBackup
+                    onConfirmImport = ::restoreBackup,
+                    syncState = syncUi,
+                    onSyncSignIn = { url, email, password, register, done -> sync.signIn(url, email, password, register, done) },
+                    onSyncNow = { lifecycleScope.launch { sync.syncNow() } },
+                    onSyncSignOut = { sync.signOut() }
                 )
             }
         }
@@ -177,10 +193,12 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         TaskEvents.onExternalChange = ::reloadFromStore
+        sync.onForeground()
     }
 
     override fun onStop() {
         TaskEvents.onExternalChange = null
+        sync.onBackground()
         super.onStop()
     }
 
@@ -259,8 +277,42 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** Records that came from the sync server replace the list; alarms follow the new state. */
+    private fun applyFromSync(updated: List<ReminderTask>) {
+        val ids = updated.mapTo(HashSet()) { it.id }
+        tasks.filter { it.id !in ids }.forEach { reminders.cancel(it.id) }
+        tasks = updated.map { it.normalized() }
+        store.save(tasks)
+        tasks = reminders.rescheduleAll(tasks)
+        saveToCloud(manual = false)
+    }
+
+    /**
+     * Writes a whole document through the storage framework. Some providers ignore "wt" or leave a stale
+     * size, which produced empty copies; write through a file descriptor, sync it and check the result.
+     */
+    private fun writeDocument(uri: Uri, data: ByteArray) {
+        val written = runCatching {
+            contentResolver.openFileDescriptor(uri, "rwt")?.use { pfd ->
+                java.io.FileOutputStream(pfd.fileDescriptor).use { out ->
+                    out.channel.truncate(0)
+                    out.write(data)
+                    out.flush()
+                    out.fd.sync()
+                }
+                true
+            } ?: false
+        }.getOrDefault(false)
+        if (!written) {
+            contentResolver.openOutputStream(uri, "wt")?.use { it.write(data); it.flush() }
+                ?: throw IllegalStateException("Не удалось открыть файл")
+        }
+        val size = runCatching { contentResolver.openFileDescriptor(uri, "r")?.use { it.statSize } }.getOrNull()
+        if (size != null && size >= 0 && size < data.size) throw IllegalStateException("Файл записался не полностью")
+    }
+
     private fun save(task: ReminderTask) {
-        val normalized = task.normalized()
+        val normalized = task.normalized().copy(updatedAt = System.currentTimeMillis())
         val index = tasks.indexOfFirst { it.id == normalized.id }
         tasks = if (index >= 0) {
             tasks.toMutableList().apply { this[index] = normalized }
@@ -327,10 +379,7 @@ class MainActivity : ComponentActivity() {
                 try {
                     val data = TaskBackupCodec.encode(snapshot).toByteArray(Charsets.UTF_8)
                     require(data.size <= TaskBackupCodec.MAX_BYTES) { "Список слишком большой для копии" }
-                    withContext(Dispatchers.IO) {
-                        contentResolver.openOutputStream(target, "wt")?.use { it.write(data) }
-                            ?: throw IllegalStateException("Не удалось открыть файл")
-                    }
+                    withContext(Dispatchers.IO) { writeDocument(target, data) }
                     lastCloudSaveAt = System.currentTimeMillis()
                     cloudError = null
                     getSharedPreferences("cloud_backup", MODE_PRIVATE).edit()

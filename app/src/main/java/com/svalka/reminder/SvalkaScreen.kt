@@ -148,7 +148,11 @@ fun SvalkaScreen(
     onExport: () -> Unit,
     onChooseImport: () -> Unit,
     onDismissImport: () -> Unit,
-    onConfirmImport: (Boolean) -> Unit
+    onConfirmImport: (Boolean) -> Unit,
+    syncState: com.svalka.reminder.sync.SyncUi = com.svalka.reminder.sync.SyncUi(),
+    onSyncSignIn: (String, String, String, Boolean, (String?) -> Unit) -> Unit = { _, _, _, _, done -> done("Недоступно") },
+    onSyncNow: () -> Unit = {},
+    onSyncSignOut: () -> Unit = {}
 ) {
     val palette = markerColors()
     val focusManager = LocalFocusManager.current
@@ -184,6 +188,7 @@ fun SvalkaScreen(
     var reminderEditing by remember { mutableStateOf<ReminderTask?>(null) }
     var themeDialog by remember { mutableStateOf(false) }
     var backupDialog by remember { mutableStateOf(false) }
+    var syncDialog by remember { mutableStateOf(false) }
     var replaceConfirmation by remember { mutableStateOf(false) }
     var permanentDelete by remember { mutableStateOf<ReminderTask?>(null) }
     var pendingSwipe by remember { mutableStateOf<PendingSwipe?>(null) }
@@ -915,6 +920,28 @@ fun SvalkaScreen(
                 Text("Копия сохраняет дела, покупки, ссылки и мысли. Восстановить её можно из файла в этом меню.",
                     color = palette.secondary, fontSize = 14.sp, lineHeight = 20.sp)
                 Spacer(Modifier.height(20.dp))
+                Caption("СИНХРОНИЗАЦИЯ", color = palette.foreground, size = 12.sp)
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    when {
+                        !syncState.signedIn -> "Свой сервер: записи будут одинаковыми на телефоне и компьютере."
+                        syncState.error != null -> "Ошибка: ${syncState.error}"
+                        else -> "Включена · ${syncState.email}"
+                    },
+                    color = if (syncState.error != null) palette.reminderText else palette.secondary,
+                    fontSize = 13.sp, lineHeight = 19.sp
+                )
+                Spacer(Modifier.height(12.dp))
+                OutlinedButton(
+                    onClick = { backupDialog = false; syncDialog = true },
+                    modifier = Modifier.fillMaxWidth().height(52.dp).testTag("openSync"),
+                    border = BorderStroke(1.dp, palette.divider),
+                    shape = RoundedCornerShape(8.dp)
+                ) { Text(if (syncState.signedIn) "НАСТРОЙКИ СИНХРОНИЗАЦИИ" else "ПОДКЛЮЧИТЬ СЕРВЕР",
+                    color = palette.foreground, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
+                Spacer(Modifier.height(18.dp))
+                HorizontalDivider(color = palette.divider)
+                Spacer(Modifier.height(18.dp))
                 Caption("GOOGLE ДИСК", color = palette.foreground, size = 12.sp)
                 Spacer(Modifier.height(8.dp))
                 Text(
@@ -978,6 +1005,14 @@ fun SvalkaScreen(
             }
         }
     }
+
+    if (syncDialog) SyncDialog(
+        state = syncState,
+        onDismiss = { syncDialog = false },
+        onSignIn = onSyncSignIn,
+        onSyncNow = onSyncNow,
+        onSignOut = onSyncSignOut
+    )
 
     backupPreview?.let { preview ->
         val currentIds = tasks.mapTo(HashSet<String>()) { it.id }
