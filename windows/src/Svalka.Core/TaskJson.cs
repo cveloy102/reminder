@@ -17,7 +17,8 @@ public static class TaskJson
         ["list"] = t.List.Value(),
         ["url"] = t.Url,
         ["repeat"] = t.Repeat.Value(),
-        ["snoozeUntil"] = t.SnoozeUntil
+        ["snoozeUntil"] = t.SnoozeUntil,
+        ["updatedAt"] = t.UpdatedAt
     };
 
     /// <summary>Lenient parse used for the app's own data files.</summary>
@@ -32,7 +33,8 @@ public static class TaskJson
         List: list,
         Url: OptNonBlank(o, "url"),
         Repeat: Storage.ParseRepeat(OptString(o, "repeat")),
-        SnoozeUntil: OptLong(o, "snoozeUntil"));
+        SnoozeUntil: OptLong(o, "snoozeUntil"),
+        UpdatedAt: OptLong(o, "updatedAt") ?? 0);
 
     internal static bool OptBool(JsonObject o, string key) =>
         o[key] is JsonValue v && v.TryGetValue<bool>(out var b) && b;

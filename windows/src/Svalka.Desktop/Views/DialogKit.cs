@@ -72,6 +72,8 @@ public static class DialogKit
         return box;
     }
 
+    public static PasswordBox Password() => new() { Style = (Style)Application.Current.FindResource("PasswordField") };
+
     public static Button Accent(string text, Action onClick) => MakeButton("AccentButton", text, onClick);
     public static Button Outline(string text, Action onClick) => MakeButton("OutlineButton", text, onClick);
 

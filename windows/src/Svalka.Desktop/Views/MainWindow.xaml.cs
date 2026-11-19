@@ -24,9 +24,14 @@ public partial class MainWindow : Window
     private Point _dragStart;
     private TaskItemViewModel? _dragCandidate;
 
-    public MainWindow(MainViewModel vm, AppSettings settings, Notifier notifier)
+    private readonly SyncService _sync;
+
+    public MainWindow(MainViewModel vm, AppSettings settings, Notifier notifier, SyncService sync)
     {
         InitializeComponent();
+        _sync = sync;
+        sync.Engine.StatusChanged += () => Dispatcher.BeginInvoke(UpdateSyncBadge);
+        UpdateSyncBadge();
         _vm = vm;
         _settings = settings;
         _notifier = notifier;
@@ -50,6 +55,25 @@ public partial class MainWindow : Window
         };
         Activated += (_, _) => vm.PurgeTrash();
         PreviewKeyDown += OnWindowKeyDown;
+        StateChanged += (_, _) => UpdateMaximizeState();
+        Activated += (_, _) => TitleBar.Opacity = 1;
+        Deactivated += (_, _) => TitleBar.Opacity = 0.7;
+    }
+
+    // ---- Own title bar ----
+
+    private void Min_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+    private void Max_Click(object sender, RoutedEventArgs e) =>
+        WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+    private void Close_Click(object sender, RoutedEventArgs e) => Close();
+
+    private void UpdateMaximizeState()
+    {
+        var maximized = WindowState == WindowState.Maximized;
+        // A maximised chrome-less window spills over the screen edge by the resize border; pad it back.
+        Root.Margin = maximized ? new Thickness(7) : new Thickness(0);
+        MaxIcon.Data = Geometry.Parse(maximized ? "M2.5,0.5 H9.5 V7.5 M0.5,2.5 H7.5 V9.5 H0.5 Z" : "M0.5,0.5 H9.5 V9.5 H0.5 Z");
+        MaxButton.ToolTip = maximized ? "Восстановить" : "Развернуть";
     }
 
     private void OnVmChanged(object? sender, PropertyChangedEventArgs e)
@@ -194,6 +218,21 @@ public partial class MainWindow : Window
     private void Undo_Click(object sender, RoutedEventArgs e) => _vm.Undo();
     private void Settings_Click(object sender, RoutedEventArgs e) => ShowSettings();
     private void Data_Click(object sender, RoutedEventArgs e) => ShowData();
+    private void Sync_Click(object sender, RoutedEventArgs e) => ShowSync();
+
+    private void UpdateSyncBadge()
+    {
+        var engine = _sync.Engine;
+        var (text, brush) = !engine.SignedIn ? ("СИНХР", "B.Sec")
+            : engine.Status == Svalka.Core.Sync.SyncStatus.Error ? ("СИНХР !", "B.Accent")
+            : engine.Status == Svalka.Core.Sync.SyncStatus.Syncing ? ("СИНХР ⟳", "B.Fg")
+            : ("СИНХР ✓", "B.Fg");
+        SyncBadge.Text = text;
+        SyncBadge.SetResourceReference(TextBlock.ForegroundProperty, brush);
+        SyncButton.ToolTip = !engine.SignedIn ? "Синхронизация выключена"
+            : engine.LastError ?? (engine.LiveConnected ? "Синхронизация работает" : "Синхронизация: нет постоянной связи с сервером");
+        _syncDialogRefresh?.Invoke();
+    }
 
     // ---- Rows ----
 

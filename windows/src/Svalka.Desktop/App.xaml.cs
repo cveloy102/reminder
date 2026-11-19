@@ -17,6 +17,7 @@ public partial class App : Application
     private Forms.NotifyIcon? _tray;
     private MainWindow? _window;
     private AppSettings _settings = new();
+    private SyncService? _sync;
     private bool _exiting;
 
     protected override void OnStartup(StartupEventArgs e)
@@ -43,7 +44,8 @@ public partial class App : Application
         var notifier = new Notifier();
         var cloud = new CloudBackup(_settings);
         var vm = new MainViewModel(new TaskStore(AppPaths.Data), _settings, notifier, cloud);
-        _window = new MainWindow(vm, _settings, notifier);
+        _sync = new SyncService(vm, Dispatcher);
+        _window = new MainWindow(vm, _settings, notifier, _sync);
         _window.Closing += (_, args) =>
         {
             if (_exiting) return;
@@ -64,6 +66,7 @@ public partial class App : Application
         _instance.ListenForShow(() => Dispatcher.Invoke(ShowWindow));
         CreateTray();
         vm.Start();
+        _sync.Start();
 
         var startHidden = e.Args.Contains("--tray") || Notifier.StartedFromToast;
         if (!startHidden) ShowWindow();
@@ -131,6 +134,7 @@ public partial class App : Application
             _tray.Dispose();
         }
         _settings.Save();
+        _sync?.Dispose();
         _instance?.Dispose();
         base.OnExit(e);
     }

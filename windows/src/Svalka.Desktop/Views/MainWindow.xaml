@@ -6,6 +6,11 @@
         Background="{DynamicResource B.Bg}" Foreground="{DynamicResource B.Fg}"
         FontFamily="{StaticResource Inter}" UseLayoutRounding="True"
         TextOptions.TextFormattingMode="Ideal">
+    <!-- Own title bar in the app's style; the system frame keeps snapping and resizing. -->
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="38" ResizeBorderThickness="6" GlassFrameThickness="0" CornerRadius="0"
+                      UseAeroCaptionButtons="False"/>
+    </WindowChrome.WindowChrome>
     <Window.Resources>
         <DataTemplate x:Key="RowTemplate">
             <StackPanel>
@@ -115,8 +120,37 @@
         </DataTemplate>
     </Window.Resources>
 
-    <Grid>
-        <Grid Margin="20,10,20,8">
+    <Grid x:Name="Root">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="38"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Title bar -->
+        <DockPanel x:Name="TitleBar" Grid.Row="0" Background="{DynamicResource B.Bg}">
+            <Button x:Name="CloseButton" DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Tag="close"
+                    Click="Close_Click" ToolTip="Закрыть в трей">
+                <Path Data="M0,0 L10,10 M10,0 L0,10" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                      StrokeThickness="1.2" Width="10" Height="10"/>
+            </Button>
+            <Button x:Name="MaxButton" DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Click="Max_Click"
+                    ToolTip="Развернуть">
+                <Path x:Name="MaxIcon" Data="M0.5,0.5 H9.5 V9.5 H0.5 Z"
+                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                      StrokeThickness="1.1" Width="10" Height="10"/>
+            </Button>
+            <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Click="Min_Click" ToolTip="Свернуть">
+                <Path Data="M0,5 H10" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                      StrokeThickness="1.2" Width="10" Height="10"/>
+            </Button>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="20,0,0,0">
+                <TextBlock Text="СВАЛ" FontSize="13" FontWeight="Black" Foreground="{DynamicResource B.Fg}"/>
+                <TextBlock Text="КА" FontSize="13" FontWeight="Black" Foreground="{DynamicResource B.Accent}"/>
+                <TextBlock Text="  ·  WINDOWS" Style="{StaticResource Caption}" FontSize="10" VerticalAlignment="Center"/>
+            </StackPanel>
+        </DockPanel>
+
+        <Grid Grid.Row="1" Margin="20,2,20,8">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
@@ -133,6 +167,10 @@
                 <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Click="Settings_Click"
                         ToolTip="Тема и запуск" Visibility="{Binding NotInTrash, Converter={StaticResource Vis}}">
                     <TextBlock Style="{StaticResource Caption}" Text="НАСТРОЙКИ ◐" Foreground="{DynamicResource B.Fg}"/>
+                </Button>
+                <Button x:Name="SyncButton" DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Click="Sync_Click"
+                        Visibility="{Binding NotInTrash, Converter={StaticResource Vis}}">
+                    <TextBlock x:Name="SyncBadge" Style="{StaticResource Caption}" Text="СИНХР"/>
                 </Button>
                 <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Click="Data_Click"
                         ToolTip="Копии и Google Диск" Visibility="{Binding NotInTrash, Converter={StaticResource Vis}}">
@@ -242,7 +280,7 @@
         </Grid>
 
         <!-- Short message, like a Toast on Android -->
-        <Border x:Name="Snackbar" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="20,0,20,150"
+        <Border x:Name="Snackbar" Grid.Row="1" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="20,0,20,150"
                 Background="{DynamicResource B.Fg}" CornerRadius="8" Padding="16,10" Visibility="Collapsed"
                 IsHitTestVisible="False">
             <TextBlock x:Name="SnackbarText" Foreground="{DynamicResource B.Bg}" FontSize="13" FontWeight="SemiBold"
@@ -250,7 +288,7 @@
         </Border>
 
         <!-- Dialog layer -->
-        <Grid x:Name="Overlay" Visibility="Collapsed">
+        <Grid x:Name="Overlay" Grid.Row="1" Visibility="Collapsed">
             <Border Background="{DynamicResource B.Scrim}" MouseLeftButtonDown="Scrim_MouseDown"/>
             <ContentControl x:Name="DialogHost" Margin="18" MaxWidth="480" VerticalAlignment="Center"
                             HorizontalAlignment="Stretch" Focusable="False"/>

@@ -58,7 +58,8 @@ public static class TaskBackupCodec
                 List: Storage.ParseList(TaskJson.OptString(item, "list") ?? "tasks"),
                 Url: TaskJson.OptNonBlank(item, "url"),
                 Repeat: Storage.ParseRepeat(TaskJson.OptString(item, "repeat") ?? "none"),
-                SnoozeUntil: OptionalLong(item, "snoozeUntil")));
+                SnoozeUntil: OptionalLong(item, "snoozeUntil"),
+                UpdatedAt: OptionalLong(item, "updatedAt") ?? 0));
         }
         return new TaskBackup(tasks, exportedAt);
     }

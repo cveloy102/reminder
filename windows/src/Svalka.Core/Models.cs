@@ -63,4 +63,9 @@ public sealed record ReminderTask(
     TaskList List = TaskList.Tasks,
     string? Url = null,
     RepeatRule Repeat = RepeatRule.None,
-    long? SnoozeUntil = null);
+    long? SnoozeUntil = null,
+    long UpdatedAt = 0)
+{
+    /// <summary>Last edit time used to pick the newest version when syncing; old data falls back to creation time.</summary>
+    public long EditedAt => UpdatedAt > 0 ? UpdatedAt : CreatedAt;
+}

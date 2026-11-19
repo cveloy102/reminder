@@ -48,6 +48,10 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     public event Action<string>? Message;
+    /// <summary>A record was edited here (sync uploads it).</summary>
+    public event Action<string>? RecordChanged;
+    /// <summary>A record was deleted for good here (sync removes it on other devices).</summary>
+    public event Action<string>? RecordPurged;
 
     public CloudBackup Cloud { get; }
     public IReadOnlyList<string> RecoveredFiles { get; }
@@ -199,12 +203,13 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>Insert or replace a record (new records go on top), then save and recheck reminders.</summary>
     public void Save(ReminderTask task)
     {
-        var normalized = task.Normalized();
+        var normalized = task.Normalized() with { UpdatedAt = Clock.NowMs() };
         var index = _tasks.FindIndex(t => t.Id == normalized.Id);
         if (index >= 0) _tasks[index] = normalized;
         else _tasks.Insert(0, normalized);
         _notifier.Remove(normalized.Id);
         Commit();
+        RecordChanged?.Invoke(normalized.Id);
     }
 
     /// <summary>Adds what is typed in the composer. Returns a link that still needs a name, if any.</summary>
@@ -263,9 +268,10 @@ public sealed partial class MainViewModel : ObservableObject
         var now = Clock.NowMs();
         var ids = _tasks.Where(t => t.List == list && t.Completed && t.DeletedAt == null).Select(t => t.Id).ToHashSet();
         if (ids.Count == 0) return;
-        _tasks = _tasks.Select(t => ids.Contains(t.Id) ? t with { DeletedAt = now } : t).ToList();
+        _tasks = _tasks.Select(t => ids.Contains(t.Id) ? t with { DeletedAt = now, UpdatedAt = now } : t).ToList();
         foreach (var id in ids) _notifier.Remove(id);
         Commit();
+        foreach (var id in ids) RecordChanged?.Invoke(id);
         Message?.Invoke($"В корзине: {ids.Count}");
     }
 
@@ -280,12 +286,13 @@ public sealed partial class MainViewModel : ObservableObject
         var to = active.FindIndex(t => t.Id == toId);
         if (from < 0 || to < 0 || active[from].Completed != active[to].Completed) return;
         var reordered = active.ToList();
-        var moved = reordered[from] with { Pinned = !active[from].Completed && active[to].Pinned };
+        var moved = reordered[from] with { Pinned = !active[from].Completed && active[to].Pinned, UpdatedAt = Clock.NowMs() };
         reordered.RemoveAt(from);
         var target = reordered.FindIndex(t => t.Id == toId);
         reordered.Insert(target + (from < to ? 1 : 0), moved);
         _tasks = reordered.Concat(_tasks.Where(t => t.List != source.List || t.DeletedAt != null)).ToList();
         Commit();
+        RecordChanged?.Invoke(fromId);
     }
 
     public void MoveToTrash(ReminderTask task, bool offerUndo = true)
@@ -305,6 +312,7 @@ public sealed partial class MainViewModel : ObservableObject
         _tasks.RemoveAll(t => t.Id == task.Id);
         _notifier.Remove(task.Id);
         Commit();
+        RecordPurged?.Invoke(task.Id);
     }
 
     private void StartUndo(PendingUndo undo)
@@ -370,8 +378,17 @@ public sealed partial class MainViewModel : ObservableObject
         var updated = ReminderEngine.ProcessDue(_tasks, Clock.NowMs(), _settings.DeliveredReminders, _notifier.ShowReminder);
         if (!before.SequenceEqual(_settings.DeliveredReminders)) _settings.Save();
         if (updated.SequenceEqual(_tasks)) return;
+        var now = Clock.NowMs();
+        var changed = new List<string>();
+        for (var i = 0; i < updated.Count; i++)
+        {
+            if (updated[i] == _tasks[i]) continue;
+            updated[i] = updated[i] with { UpdatedAt = now };
+            changed.Add(updated[i].Id);
+        }
         _tasks = updated;
         Commit();
+        foreach (var id in changed) RecordChanged?.Invoke(id);
     }
 
     /// <summary>Trash older than 30 days is removed for good.</summary>
@@ -379,9 +396,12 @@ public sealed partial class MainViewModel : ObservableObject
     {
         var kept = TaskRules.PurgeExpiredTrash(_tasks, Clock.NowMs());
         if (kept.Count == _tasks.Count) return;
+        var keptIds = kept.Select(t => t.Id).ToHashSet();
+        var purged = _tasks.Where(t => !keptIds.Contains(t.Id)).Select(t => t.Id).ToList();
         _tasks = kept;
         _store.Save(_tasks);
         Rebuild();
+        foreach (var id in purged) RecordPurged?.Invoke(id);
     }
 
     // ---- Backups ----
@@ -398,11 +418,24 @@ public sealed partial class MainViewModel : ObservableObject
             Message?.Invoke("Не удалось восстановить: " + error.Message);
             return;
         }
+        var before = _tasks.ToDictionary(t => t.Id);
         _tasks = result;
         PurgeTrash();
         Commit();
+        foreach (var t in _tasks.Where(t => !before.TryGetValue(t.Id, out var old) || old != t)) RecordChanged?.Invoke(t.Id);
+        var now = _tasks.Select(t => t.Id).ToHashSet();
+        foreach (var id in before.Keys.Where(id => !now.Contains(id))) RecordPurged?.Invoke(id);
         CheckReminders();
         Message?.Invoke("Записи восстановлены");
+    }
+
+    /// <summary>Applies a change that came from the sync server (not an edit made here, so nothing is uploaded back).</summary>
+    public void ApplyFromSync(Func<List<ReminderTask>, List<ReminderTask>> change)
+    {
+        var before = _tasks.Select(t => t.Id).ToHashSet();
+        _tasks = change(_tasks.ToList()).Select(t => t.Normalized()).ToList();
+        foreach (var gone in before.Where(id => _tasks.All(t => t.Id != id))) _notifier.Remove(gone);
+        Commit();
     }
 
     public async void SaveCloudNow()
