@@ -208,6 +208,21 @@ fun SvalkaScreen(
     val listState = rememberLazyListState()
     val thoughts = section == TaskList.THOUGHTS
 
+    // LazyColumn keeps the first visible row in place by its key. When that row moves far away
+    // (checked → it goes down to ГОТОВО, also when the change comes from the computer), the list would
+    // follow it to the bottom. Keep the screen where it was instead: same position, not the same row.
+    val visibleKeys = visible.map { "${if (trash) "trash" else "active"}:${it.id}" }
+    val shownKeys = remember { arrayOf(visibleKeys) }
+    if (visibleKeys != shownKeys[0]) {
+        val first = listState.firstVisibleItemIndex
+        val anchor = shownKeys[0].getOrNull(first)
+        val movedTo = if (anchor == null) -1 else visibleKeys.indexOf(anchor)
+        if (movedTo >= 0 && movedTo != first && visibleKeys.isNotEmpty()) {
+            listState.requestScrollToItem(first.coerceAtMost(visibleKeys.lastIndex), listState.firstVisibleItemScrollOffset)
+        }
+        shownKeys[0] = visibleKeys
+    }
+
     LaunchedEffect(sectionRequest) {
         sectionRequest?.let {
             section = it

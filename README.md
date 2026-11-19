@@ -4,7 +4,7 @@
 
 **Android 7+ · версия 1.9 · данные на устройстве**
 
-[**Скачать APK**](https://github.com/cveloy102/reminder/releases/download/v1.9/Svalka-1.9.apk) · [Релиз 1.9](https://github.com/cveloy102/reminder/releases/tag/v1.9) · [История версий](CHANGELOG.md) · [Сборка](docs/DEVELOPMENT.md)
+[**Скачать APK**](https://github.com/cveloy102/reminder/releases/download/v1.9/Svalka-1.9.apk) · [Релиз 1.9](https://github.com/cveloy102/reminder/releases/tag/v1.9) · [История версий](CHANGELOG.md) · [Сборка](docs/DEVELOPMENT.md) · [Свой сервер синхронизации](docs/SELF_HOSTING.md)
 
 ## Интерфейс
 

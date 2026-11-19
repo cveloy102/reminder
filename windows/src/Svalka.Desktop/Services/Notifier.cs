@@ -7,8 +7,8 @@ using Svalka.Core;
 namespace Svalka.Desktop.Services;
 
 /// <summary>
-/// Windows toast notifications with the same buttons as on the phone: "Готово", "Через 15 мин", "Через 1 час".
-/// The toast stays on screen until answered (reminder scenario) and plays the app's own signal.
+/// Reminder cards with the same buttons as on the phone: "Готово", "Через 15 мин", "Через 1 час".
+/// Drawn by the app itself in its own style; clicks on old Windows toasts are still handled.
 /// </summary>
 public sealed class Notifier
 {
@@ -46,25 +46,17 @@ public sealed class Notifier
 
     public static bool StartedFromToast => ToastNotificationManagerCompat.WasCurrentProcessToastActivated();
 
-    /// <summary>Returns false when Windows refused to show the toast (we then retry on the next check).</summary>
+    /// <summary>
+    /// Shows the app's own reminder card (see <see cref="Views.ReminderToast"/>): it stays until answered and
+    /// plays the app's signal. Must be called on the UI thread. Returns false if the card could not be shown.
+    /// </summary>
     public bool ShowReminder(ReminderTask task)
     {
         try
         {
-            new ToastContentBuilder()
-                .AddArgument("action", ActionOpen)
-                .AddArgument("id", task.Id)
-                .SetToastScenario(ToastScenario.Reminder)
-                .AddText("СВАЛКА · ПОРА")
-                .AddText(task.Title)
-                .AddButton(new ToastButton().SetContent("Готово")
-                    .AddArgument("action", ActionDone).AddArgument("id", task.Id).SetBackgroundActivation())
-                .AddButton(new ToastButton().SetContent("Через 15 мин")
-                    .AddArgument("action", ActionSnooze).AddArgument("id", task.Id).AddArgument("minutes", 15).SetBackgroundActivation())
-                .AddButton(new ToastButton().SetContent("Через 1 час")
-                    .AddArgument("action", ActionSnooze).AddArgument("id", task.Id).AddArgument("minutes", 60).SetBackgroundActivation())
-                .AddAudio(new ToastAudio { Silent = true })
-                .Show(toast => toast.Tag = Tag(task.Id));
+            Views.ReminderToast.Present("[ СВАЛКА · ПОРА ]", task.Title, task.Id,
+                (action, minutes) => Activated?.Invoke(action, task.Id, minutes),
+                () => Activated?.Invoke(ActionOpen, task.Id, 0));
             PlaySound();
             return true;
         }
@@ -78,12 +70,8 @@ public sealed class Notifier
     {
         try
         {
-            new ToastContentBuilder()
-                .AddArgument("action", ActionOpen)
-                .AddText("СВАЛКА · ПРОВЕРКА")
-                .AddText("Так будут выглядеть напоминания.")
-                .AddAudio(new ToastAudio { Silent = true })
-                .Show();
+            Views.ReminderToast.Present("[ СВАЛКА · ПРОВЕРКА ]", "Так будут выглядеть напоминания.", null,
+                null, () => Activated?.Invoke(ActionOpen, "", 0), TimeSpan.FromSeconds(6));
             PlaySound();
         }
         catch (Exception) { /* ignore */ }
@@ -91,6 +79,8 @@ public sealed class Notifier
 
     public void Remove(string taskId)
     {
+        try { Views.ReminderToast.CloseFor(taskId); } catch (Exception) { /* ignore */ }
+        // Cards from older versions may still sit in the Windows notification centre.
         try { ToastNotificationManagerCompat.History.Remove(Tag(taskId)); } catch (Exception) { /* ignore */ }
     }
 

@@ -197,7 +197,8 @@ private fun postReminder(context: Context, task: ReminderTask): Boolean {
         .setAutoCancel(true)
         .setPriority(NotificationCompat.PRIORITY_HIGH)
         .setCategory(NotificationCompat.CATEGORY_REMINDER)
-        .setColor(0xFFDFFF71.toInt())
+        .setColor(0xFFF0443E.toInt()) // the app's red accent
+        .setLargeIcon(notificationLargeIcon(context))
         .setSound(reminderSoundUri(context))
         .setVibrate(VIBRATION_PATTERN)
         .addAction(0, "Готово", actionIntent(context, task, ReminderActionReceiver.ACTION_DONE))
@@ -233,4 +234,19 @@ object TaskEvents {
     fun notifyChanged() {
         android.os.Handler(android.os.Looper.getMainLooper()).post { onExternalChange?.invoke() }
     }
+}
+
+/** The app icon (black square, white "СВАЛ" + red "КА") for the notification, scaled once and kept. */
+private var cachedLargeIcon: android.graphics.Bitmap? = null
+
+private fun notificationLargeIcon(context: Context): android.graphics.Bitmap? {
+    cachedLargeIcon?.let { return it }
+    return runCatching {
+        val size = (64 * context.resources.displayMetrics.density).toInt()
+        val source = android.graphics.BitmapFactory.decodeResource(context.resources, R.drawable.icon_red_ka)
+        android.graphics.Bitmap.createScaledBitmap(source, size, size, true).also {
+            if (it !== source) source.recycle()
+            cachedLargeIcon = it
+        }
+    }.getOrNull()
 }
