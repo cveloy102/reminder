@@ -31,6 +31,9 @@ class SyncApi(baseUrl: String, var token: String? = null) {
         return o.optBoolean("signup")
     }
 
+    /** Server id that changes when the server is restored from a backup ("" on older servers). */
+    fun instance(): String = request("GET", "/api/svalka/info", null, auth = false).optString("instance")
+
     /** Returns user id and email. */
     fun login(email: String, password: String): Pair<String, String> {
         val o = try {

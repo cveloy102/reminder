@@ -132,7 +132,6 @@ public sealed class ReminderToast : Window
             BorderThickness = new Thickness(1),
             Child = grid,
             Cursor = onOpen != null ? Cursors.Hand : null,
-            Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 18, ShadowDepth = 3, Opacity = 0.28 },
             Margin = new Thickness(10) // room for the shadow
         };
         if (onOpen != null)
@@ -144,7 +143,22 @@ public sealed class ReminderToast : Window
                 CloseOnce();
             };
         }
-        Content = card;
+        // The shadow is drawn by a separate empty border underneath: an effect on the card itself would turn
+        // its text into a bitmap, which looks blurry on scaled screens (125 %, 150 %).
+        var shadow = new Border
+        {
+            Background = B("B.Sheet"),
+            Margin = new Thickness(10),
+            Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 18, ShadowDepth = 3, Opacity = 0.28 }
+        };
+        var root = new Grid();
+        root.Children.Add(shadow);
+        root.Children.Add(card);
+        Content = root;
+        UseLayoutRounding = true;
+        SnapsToDevicePixels = true;
+        TextOptions.SetTextFormattingMode(this, TextFormattingMode.Display);
+        TextOptions.SetTextRenderingMode(this, TextRenderingMode.ClearType);
 
         if (autoClose is { } after)
         {
@@ -192,8 +206,10 @@ public sealed class ReminderToast : Window
         {
             if (!toast.IsLoaded) continue;
             var height = toast.ActualHeight;
-            toast.Left = area.Right - toast.Width - 6;
-            toast.Top = bottom - height;
+            // Whole physical pixels: a window at a fractional position renders its text blurred.
+            var scale = VisualTreeHelper.GetDpi(toast).DpiScaleX;
+            toast.Left = Math.Round((area.Right - toast.Width - 6) * scale) / scale;
+            toast.Top = Math.Round((bottom - height) * scale) / scale;
             bottom -= height - 20 + Gap; // the 20 px of shadow margin may overlap
         }
     }

@@ -205,6 +205,18 @@ class SyncEngine(context: Context, private val host: SyncHost, private val scope
     private suspend fun runOnce(client: SyncApi) {
         val owner = prefs.getString("userId", null) ?: throw SyncException("Нужно войти снова", 401)
 
+        // 0. Restored from a backup since the last visit? The server may miss edits newer than that backup,
+        //    so compare everything once: forget what was exchanged and pull all records again.
+        val instance = withContext(Dispatchers.IO) { client.instance() }
+        val seen = prefs.getString("instance", null)
+        if (instance.isNotEmpty() && instance != seen) {
+            if (seen != null) {
+                cursor = ""
+                known.clear()
+            }
+            prefs.edit().putString("instance", instance).apply()
+        }
+
         // 1. Find local edits by comparing with what was last exchanged with the server.
         var local = host.snapshot()
         val now = System.currentTimeMillis()
@@ -313,6 +325,7 @@ class SyncEngine(context: Context, private val host: SyncHost, private val scope
     }
 
     private fun resetAccountData() {
+        prefs.edit().remove("instance").apply()
         cursor = ""
         lastSyncAt = 0L
         known.clear()

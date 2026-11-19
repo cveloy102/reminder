@@ -67,7 +67,7 @@ public sealed class SyncService : ISyncHost, IDisposable
                 {
                     ServerUrl = state.ServerUrl, Email = state.Email, UserId = state.UserId,
                     Token = state.Token == null ? null : Protect(state.Token),
-                    Cursor = state.Cursor, LastSyncAt = state.LastSyncAt,
+                    Cursor = state.Cursor, Instance = state.Instance, LastSyncAt = state.LastSyncAt,
                     Dirty = state.Dirty.ToList(), Purged = state.Purged.ToList(), RecordIds = new(state.RecordIds)
                 };
                 AtomicFile.WriteAllText(StatePath, JsonSerializer.Serialize(stored, Options));
@@ -86,7 +86,7 @@ public sealed class SyncService : ISyncHost, IDisposable
             {
                 ServerUrl = s.ServerUrl, Email = s.Email, UserId = s.UserId,
                 Token = s.Token == null ? null : Unprotect(s.Token),
-                Cursor = s.Cursor ?? "", LastSyncAt = s.LastSyncAt,
+                Cursor = s.Cursor ?? "", Instance = s.Instance, LastSyncAt = s.LastSyncAt,
                 Dirty = new HashSet<string>(s.Dirty ?? new()), Purged = new HashSet<string>(s.Purged ?? new()),
                 RecordIds = s.RecordIds ?? new()
             };
@@ -117,6 +117,7 @@ public sealed class SyncService : ISyncHost, IDisposable
         public string? UserId { get; set; }
         public string? Token { get; set; }
         public string? Cursor { get; set; }
+        public string? Instance { get; set; }
         public long LastSyncAt { get; set; }
         public List<string>? Dirty { get; set; }
         public List<string>? Purged { get; set; }

@@ -5,6 +5,7 @@
 #   ./svalka-sync.sh user add EMAIL PASSWORD     create an account for the apps
 #   ./svalka-sync.sh user passwd EMAIL PASSWORD  change a password
 #   ./svalka-sync.sh signup on|off               open or close self sign-up in the apps
+#   ./svalka-sync.sh new-instance                after restoring pb_data by hand: apps re-check all records once
 #   ./svalka-sync.sh backup [DEST]               copy a consistent snapshot of the data (DEST: folder or user@host:path)
 #   ./svalka-sync.sh update                      restart with the current files (Docker: rebuild)
 set -euo pipefail
@@ -33,6 +34,19 @@ superuser_token() {
     | sed -n 's/.*"token":"\([^"]*\)".*/\1/p'
 }
 
+set_setting() {
+  # Server switches live in the "svalka_settings" collection (see pb_migrations).
+  local token id
+  token="$(superuser_token)"
+  id="$(api -G -H "Authorization: $token" --data-urlencode "filter=key='$1'" "$API/api/collections/svalka_settings/records" \
+    | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)"
+  if [[ -n "$id" ]]; then
+    api -X PATCH -H "Authorization: $token" -d "{\"value\":\"$2\"}" "$API/api/collections/svalka_settings/records/$id" >/dev/null
+  else
+    api -H "Authorization: $token" -d "{\"key\":\"$1\",\"value\":\"$2\"}" "$API/api/collections/svalka_settings/records" >/dev/null
+  fi
+}
+
 case "${1:-}" in
   status)
     if [[ "$MODE" == native ]]; then systemctl --no-pager --lines=0 status svalka-sync || true; else docker compose ps; fi
@@ -52,9 +66,12 @@ case "${1:-}" in
   signup)
     case "${2:-}" in on) v=true ;; off) v=false ;; *) echo "usage: $0 signup on|off" >&2; exit 2 ;; esac
     sed -i "s/^SVALKA_ALLOW_SIGNUP=.*/SVALKA_ALLOW_SIGNUP=$v/" .env
-    export SVALKA_ALLOW_SIGNUP=$v
-    restart
+    set_setting signup "$v"
     echo "Sign-up: $2" ;;
+  new-instance)
+    # After restoring pb_data from a backup by hand: makes the apps compare all records with the server once.
+    set_setting instance "$(head -c 24 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 16)"
+    echo "The apps will compare all their records with the server on the next sync." ;;
   backup)
     dest="${2:-./backups}"
     name="svalka-$(date +%Y-%m-%d_%H-%M).zip"

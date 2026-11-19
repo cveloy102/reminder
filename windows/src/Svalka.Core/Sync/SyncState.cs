@@ -17,6 +17,9 @@ public sealed class SyncState
     /// <summary>Record id → server row id.</summary>
     public Dictionary<string, string> RecordIds { get; set; } = new();
 
+    /// <summary>Server instance id seen last time; a new one means the server was restored from a backup.</summary>
+    public string? Instance { get; set; }
+
     public bool SignedIn => !string.IsNullOrEmpty(Token) && !string.IsNullOrEmpty(ServerUrl);
 
     public void ResetAccountData()
@@ -24,6 +27,7 @@ public sealed class SyncState
         Token = null;
         UserId = null;
         Cursor = "";
+        Instance = null;
         LastSyncAt = 0;
         Dirty.Clear();
         Purged.Clear();

@@ -12,7 +12,8 @@ public sealed class SyncException : Exception
     public bool Unauthorized => Status is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden;
 }
 
-public sealed record ServerInfo(bool Signup, int Version);
+/// <summary><paramref name="Instance"/> changes when the server is restored from a backup ("" on older servers).</summary>
+public sealed record ServerInfo(bool Signup, int Version, string Instance = "");
 public sealed record AuthResult(string Token, string UserId, string Email);
 
 /// <summary>Talks to the СВАЛКА sync server (PocketBase REST API).</summary>
@@ -50,7 +51,8 @@ public sealed class SyncClient : IDisposable
             throw new SyncException("По этому адресу нет сервера СВАЛКИ", e.Status);
         }
         if (o["app"]?.GetValue<string>() != "svalka-sync") throw new SyncException("По этому адресу нет сервера СВАЛКИ");
-        return new ServerInfo(o["signup"]?.GetValue<bool>() == true, o["version"]?.GetValue<int>() ?? 1);
+        return new ServerInfo(o["signup"]?.GetValue<bool>() == true, o["version"]?.GetValue<int>() ?? 1,
+            o["instance"]?.GetValue<string>() ?? "");
     }
 
     public async Task<AuthResult> LoginAsync(string email, string password, CancellationToken ct = default)

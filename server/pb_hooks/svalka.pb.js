@@ -1,19 +1,31 @@
 /// <reference path="../pb_data/types.d.ts" />
 
-// Open registration only when SVALKA_ALLOW_SIGNUP=true. The server owner (superuser) can always create accounts.
+// Note: every handler runs in its own isolated context, so the small settings lookup is repeated inline.
+
+// Registration from the apps is open only when the "signup" setting is "true" (or, before that setting
+// exists, when SVALKA_ALLOW_SIGNUP=true). The server owner (superuser) can always create accounts.
 onRecordCreateRequest((e) => {
-  if ($os.getenv("SVALKA_ALLOW_SIGNUP") !== "true" && !e.hasSuperuserAuth()) {
+  let value = "";
+  try { value = $app.findFirstRecordByData("svalka_settings", "key", "signup").getString("value"); } catch (_) {}
+  const open = value ? value === "true" : $os.getenv("SVALKA_ALLOW_SIGNUP") === "true";
+  if (!open && !e.hasSuperuserAuth()) {
     throw new ForbiddenError("Регистрация на этом сервере закрыта. Попроси владельца создать аккаунт.");
   }
   e.next();
 }, "users");
 
-// Lets the apps check that the address really is a СВАЛКА server and whether sign-up is open.
+// Lets the apps check that the address really is a СВАЛКА server, whether sign-up is open,
+// and whether the server was restored from a backup since their last visit ("instance" changed).
 routerAdd("GET", "/api/svalka/info", (e) => {
+  const read = (key) => {
+    try { return $app.findFirstRecordByData("svalka_settings", "key", key).getString("value"); } catch (_) { return ""; }
+  };
+  const signup = read("signup");
   return e.json(200, {
     app: "svalka-sync",
-    version: 1,
-    signup: $os.getenv("SVALKA_ALLOW_SIGNUP") === "true",
+    version: 2,
+    signup: signup ? signup === "true" : $os.getenv("SVALKA_ALLOW_SIGNUP") === "true",
+    instance: read("instance"),
   });
 });
 

@@ -203,6 +203,25 @@ public sealed class SyncEngine : IDisposable
 
     private async Task RunOnceAsync(SyncClient client)
     {
+        // 0. Restored from a backup since the last visit? The server may miss edits newer than that backup,
+        //    so compare everything once: pull all records again and upload every local one.
+        var info = await client.GetInfoAsync();
+        if (info.Instance.Length > 0 && info.Instance != _state.Instance)
+        {
+            var firstVisit = _state.Instance == null;
+            if (!firstVisit)
+            {
+                var all = await _host.SnapshotAsync();
+                lock (_lock)
+                {
+                    _state.Cursor = "";
+                    foreach (var t in all) _state.Dirty.Add(t.Id);
+                }
+            }
+            lock (_lock) _state.Instance = info.Instance;
+            _host.SaveState(_state);
+        }
+
         // 1. Pull what changed on the server since last time and merge it in.
         var pulled = await client.PullAsync(_state.Cursor);
         if (pulled.Count > 0)
