@@ -31,7 +31,7 @@
                         <!-- Checkbox (tasks, shopping) -->
                         <Border x:Name="Check" Width="22" Height="22" Margin="0,1,0,0" HorizontalAlignment="Left"
                                 VerticalAlignment="Top" BorderThickness="2" BorderBrush="{DynamicResource B.Fg}"
-                                Background="Transparent" Cursor="Hand" MouseLeftButtonUp="Row_Toggle"
+                                Background="Transparent" CornerRadius="6" Cursor="Hand" MouseLeftButtonUp="Row_Toggle"
                                 ToolTip="Отметить выполненным"
                                 Visibility="{Binding IsCheckable, Converter={StaticResource Vis}}">
                             <TextBlock x:Name="CheckMark" Text="✓" FontSize="14" FontWeight="Bold" Visibility="Collapsed"
@@ -233,7 +233,7 @@
 
             <!-- Undo banner -->
             <Border Grid.Row="5" Margin="0,6,0,8" Background="{DynamicResource B.Sheet}" BorderBrush="{DynamicResource B.Div}"
-                    BorderThickness="1" Padding="12,0,0,0" Visibility="{Binding HasUndo, Converter={StaticResource Vis}}">
+                    BorderThickness="1" CornerRadius="8" Padding="12,0,0,0" Visibility="{Binding HasUndo, Converter={StaticResource Vis}}">
                 <DockPanel>
                     <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Click="Undo_Click" Padding="10,10">
                         <TextBlock Style="{StaticResource Caption}" Text="ОТМЕНИТЬ" FontSize="10" Foreground="{DynamicResource B.Rem}"/>
@@ -246,10 +246,10 @@
             </Border>
 
             <!-- Composer -->
-            <Border Grid.Row="6" Background="{DynamicResource B.Accent}" Padding="16,8,8,8" MinHeight="60" Margin="0,4,0,12"
+            <Border Grid.Row="6" Background="{DynamicResource B.Accent}" CornerRadius="12" Padding="16,8,8,8" MinHeight="60" Margin="0,4,0,12"
                     Visibility="{Binding NotInTrash, Converter={StaticResource Vis}}">
                 <DockPanel>
-                    <Border DockPanel.Dock="Right" Width="44" Height="44" Background="{DynamicResource B.AccentText}"
+                    <Border DockPanel.Dock="Right" Width="44" Height="44" CornerRadius="9" Background="{DynamicResource B.AccentText}"
                             Cursor="Hand" MouseLeftButtonUp="Add_Click" VerticalAlignment="Bottom" ToolTip="Добавить (Enter)">
                         <TextBlock Text="+" FontSize="28" FontWeight="Medium" Foreground="{DynamicResource B.Accent}"
                                    HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-4,0,0"/>
