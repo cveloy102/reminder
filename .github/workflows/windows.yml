@@ -17,15 +17,14 @@ jobs:
           dotnet-version: 8.0.x
       - name: Tests
         run: dotnet test windows/tests/Svalka.Core.Tests -c Release
-      - name: Publish single exe
-        run: >
-          dotnet publish windows/src/Svalka.Desktop -c Release -r win-x64 --self-contained true
-          -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
-          -p:EnableCompressionInSingleFile=true -p:DebugType=none -o publish
+      - name: Build installer and portable exe
+        shell: pwsh
+        run: ./windows/Publish.ps1 -OutputDirectory publish
       - uses: actions/upload-artifact@v4
         with:
           name: Svalka-windows
-          path: publish/Svalka.exe
+          path: publish/Svalka-Windows-*.exe
+          if-no-files-found: error
           retention-days: 30
 
   # The sync engine against a real server (this repo's hooks and migrations), on Linux where PocketBase runs.

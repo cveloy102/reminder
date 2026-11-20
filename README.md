@@ -4,7 +4,7 @@
 
 **Android 7+ и Windows 10/11 · версия 2.0 · данные на устройстве, синхронизация через свой сервер**
 
-[**Скачать APK**](https://github.com/cveloy102/reminder/releases/download/v2.0/Svalka-2.0.apk) · [**Windows**](https://github.com/cveloy102/reminder/releases/download/v2.0/Svalka-Windows-0.3.3.exe) · [Релиз 2.0](https://github.com/cveloy102/reminder/releases/tag/v2.0) · [История версий](CHANGELOG.md) · [Сборка](docs/DEVELOPMENT.md) · [Свой сервер синхронизации](docs/SELF_HOSTING.md)
+[**Скачать APK**](https://github.com/cveloy102/reminder/releases/download/v2.0/Svalka-2.0.apk) · [**Установщик Windows**](https://github.com/cveloy102/reminder/releases/download/windows-v0.4.0/Svalka-Windows-Setup-0.4.0.exe) · [Релиз 2.0](https://github.com/cveloy102/reminder/releases/tag/v2.0) · [История версий](CHANGELOG.md) · [Сборка](docs/DEVELOPMENT.md) · [Свой сервер синхронизации](docs/SELF_HOSTING.md)
 
 ## Интерфейс
 
@@ -27,7 +27,7 @@
 
 ## Начало работы
 
-1. Установите APK из релиза. Для приватного репозитория требуется вход в GitHub с доступом.
+1. Установите APK из релиза или скачайте установщик для Windows из [релизов GitHub](https://github.com/cveloy102/reminder/releases).
 2. Добавьте первое дело и при необходимости поставьте напоминание с повтором.
 3. Разрешите уведомления и точные напоминания, когда Android предложит. Проверьте уведомление на коротком напоминании.
 4. Ссылки удобно отправлять из браузера через «Поделиться»; мысли записывайте во вкладке «Мысли».

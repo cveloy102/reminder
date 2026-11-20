@@ -74,13 +74,13 @@ public static class DialogKit
 
     public static PasswordBox Password() => new() { Style = (Style)Application.Current.FindResource("PasswordField") };
 
-    public static Button Accent(string text, Action onClick) => MakeButton("AccentButton", text, onClick);
-    public static Button Outline(string text, Action onClick) => MakeButton("OutlineButton", text, onClick);
+    public static Button Accent(string text, Action? onClick = null) => MakeButton("AccentButton", text, onClick);
+    public static Button Outline(string text, Action? onClick = null) => MakeButton("OutlineButton", text, onClick);
 
-    private static Button MakeButton(string style, string text, Action onClick)
+    private static Button MakeButton(string style, string text, Action? onClick)
     {
         var b = new Button { Content = text, Style = (Style)Application.Current.FindResource(style) };
-        b.Click += (_, _) => onClick();
+        if (onClick != null) b.Click += (_, _) => onClick();
         return b;
     }
 

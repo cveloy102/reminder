@@ -6,7 +6,7 @@ namespace Svalka.Desktop.Services;
 /// <summary>Only one copy runs; starting it again brings the existing window forward.</summary>
 public sealed class SingleInstance : IDisposable
 {
-    private const string MutexName = @"Local\Svalka.Windows.SingleInstance";
+    internal const string MutexName = @"Local\Svalka.Windows.SingleInstance";
     private const string EventName = @"Local\Svalka.Windows.Show";
     private readonly Mutex _mutex;
     private readonly EventWaitHandle _showEvent;
@@ -15,11 +15,18 @@ public sealed class SingleInstance : IDisposable
 
     public SingleInstance()
     {
-        _mutex = new Mutex(true, MutexName, out _owned);
+        _mutex = new Mutex(false, MutexName);
+        _owned = TryAcquire(_mutex);
         _showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, EventName);
     }
 
     public bool IsFirst => _owned;
+
+    internal static bool TryAcquire(Mutex mutex)
+    {
+        try { return mutex.WaitOne(0); }
+        catch (AbandonedMutexException) { return true; }
+    }
 
     public void SignalFirst() => _showEvent.Set();
 

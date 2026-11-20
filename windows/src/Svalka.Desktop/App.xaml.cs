@@ -19,10 +19,12 @@ public partial class App : Application
     private AppSettings _settings = new();
     private SyncService? _sync;
     private bool _exiting;
+    private bool _started;
 
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        if (SetupWindow.TryStart(this, e.Args)) return;
         _instance = new SingleInstance();
         if (!_instance.IsFirst)
         {
@@ -38,6 +40,7 @@ public partial class App : Application
         };
 
         _settings = AppSettings.Load();
+        _started = true;
         ThemeManager.Init(_settings.Theme);
         Autostart.Refresh();
 
@@ -70,6 +73,7 @@ public partial class App : Application
 
         var startHidden = e.Args.Contains("--tray") || Notifier.StartedFromToast;
         if (!startHidden) ShowWindow();
+        _ = _window.CheckForUpdatesOnStartup();
     }
 
     private void CreateTray()
@@ -133,7 +137,7 @@ public partial class App : Application
             _tray.Visible = false;
             _tray.Dispose();
         }
-        _settings.Save();
+        if (_started) _settings.Save();
         _sync?.Dispose();
         _instance?.Dispose();
         base.OnExit(e);

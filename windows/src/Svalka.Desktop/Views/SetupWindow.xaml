@@ -1,0 +1,46 @@
+<Window x:Class="Svalka.Desktop.Views.SetupWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Установка СВАЛКИ" Icon="pack://application:,,,/Assets/svalka.ico"
+        Width="490" SizeToContent="Height" WindowStartupLocation="CenterScreen"
+        WindowStyle="None" ResizeMode="NoResize" AllowsTransparency="True"
+        Background="Transparent" Foreground="{DynamicResource B.Fg}"
+        FontFamily="{StaticResource Inter}" UseLayoutRounding="True">
+    <Border Background="{DynamicResource B.Bg}" BorderBrush="{DynamicResource B.Div}"
+            BorderThickness="1" CornerRadius="14">
+        <StackPanel Margin="28,18,28,24">
+            <DockPanel Background="Transparent" MouseLeftButtonDown="DragHeader">
+                <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Content="×"
+                        FontSize="21" AutomationProperties.Name="Закрыть" Click="CloseClick"/>
+                <Image Source="pack://application:,,,/Assets/svalka.ico" DockPanel.Dock="Left"
+                       Width="26" Height="26" Margin="0,0,10,0"/>
+                <TextBlock Text="СВАЛКА" Style="{StaticResource Caption}"
+                           Foreground="{DynamicResource B.Fg}" VerticalAlignment="Center"/>
+            </DockPanel>
+            <Border Margin="0,14,0,22" Height="1" Background="{DynamicResource B.Div}"/>
+            <TextBlock x:Name="VersionLabel" Style="{StaticResource Caption}"
+                       Foreground="{DynamicResource B.Rem}"/>
+            <TextBlock x:Name="HeadingLabel" FontSize="30" FontWeight="Black" Margin="0,8,0,10"
+                       TextWrapping="Wrap"/>
+            <TextBlock x:Name="Description" TextWrapping="Wrap" FontSize="14" LineHeight="22"
+                       Foreground="{DynamicResource B.Sec}" AutomationProperties.LiveSetting="Polite"/>
+            <Border Margin="0,18,0,0" Background="{DynamicResource B.Sheet}"
+                    BorderBrush="{DynamicResource B.Div}" BorderThickness="1"
+                    CornerRadius="8" Padding="14,11">
+                <TextBlock x:Name="PlaceLabel" FontFamily="{StaticResource Mono}" FontSize="12"
+                           Foreground="{DynamicResource B.Fg}" TextWrapping="Wrap"/>
+            </Border>
+            <Grid Margin="0,22,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="12"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Button x:Name="CancelButton" Style="{StaticResource OutlineButton}"
+                        Content="ОТМЕНА" Click="CloseClick"/>
+                <Button x:Name="ActionButton" Grid.Column="2" Style="{StaticResource AccentButton}"
+                        IsDefault="True" Click="ActionClick"/>
+            </Grid>
+        </StackPanel>
+    </Border>
+</Window>

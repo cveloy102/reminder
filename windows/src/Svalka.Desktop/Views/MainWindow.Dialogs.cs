@@ -339,7 +339,7 @@ public partial class MainWindow
             catch (Exception error) { ShowMessage("Не удалось изменить автозапуск: " + error.Message); }
         });
 
-        var version = typeof(MainWindow).Assembly.GetName().Version;
+        var updatesLabel = _availableUpdate == null ? "ОБНОВЛЕНИЯ" : $"ДОСТУПНА ВЕРСИЯ {_availableUpdate.Version.ToString(3)}";
         var title = new StackPanel { Orientation = Orientation.Horizontal };
         title.Children.Add(Heading("Настройки", 28));
         var underscore = Heading("_", 28).Res(TextBlock.ForegroundProperty, "B.Accent");
@@ -353,7 +353,8 @@ public partial class MainWindow
             Gap(6), Body("Окно закрывается в трей, напоминания приходят и без открытого окна.", "B.Sec", 12),
             Gap(18), Caption("УВЕДОМЛЕНИЯ"), Gap(8),
             Outline("ПОКАЗАТЬ ПРОБНОЕ УВЕДОМЛЕНИЕ", () => _notifier.ShowTest()),
-            Gap(18), Body($"СВАЛКА для Windows · версия {version?.ToString(3)}\nДанные: {AppPaths.Data}", "B.Sec", 11),
+            Gap(8), Outline(updatesLabel, ShowUpdates),
+            Gap(18), Body($"СВАЛКА для Windows · версия {Installation.Version.ToString(3)}\nДанные: {AppPaths.Data}", "B.Sec", 11),
             Gap(8), Link("НАЗАД К СПИСКУ ←", CloseDialog)))));
     }
 

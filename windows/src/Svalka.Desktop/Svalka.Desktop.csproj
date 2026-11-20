@@ -15,7 +15,7 @@
     <Product>СВАЛКА</Product>
     <AssemblyTitle>СВАЛКА</AssemblyTitle>
     <Description>СВАЛКА — дела, покупки, ссылки и мысли</Description>
-    <Version>0.3.3</Version>
+    <Version>0.4.0</Version>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <NoWarn>$(NoWarn);WFAC010</NoWarn>
   </PropertyGroup>
@@ -31,5 +31,6 @@
     <Resource Include="Assets\Fonts\*.ttf" />
     <Resource Include="Assets\svalka.ico" />
     <EmbeddedResource Include="Assets\reminder_signal.wav" LogicalName="reminder_signal.wav" />
+    <AssemblyMetadata Include="SvalkaInstaller" Value="true" Condition="'$(SvalkaInstaller)' == 'true'" />
   </ItemGroup>
 </Project>

@@ -10,7 +10,15 @@ public static class Autostart
     private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string Name = "Svalka";
 
-    private static string Command => $"\"{Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule!.FileName}\" --tray";
+    private static string Command
+    {
+        get
+        {
+            var exe = Installation.IsInstalled ? Installation.ExePath
+                : Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule!.FileName;
+            return $"\"{exe}\" --tray";
+        }
+    }
 
     public static bool IsEnabled
     {
@@ -23,9 +31,16 @@ public static class Autostart
 
     public static void Set(bool enabled)
     {
-        using var key = Registry.CurrentUser.CreateSubKey(RunKey);
-        if (enabled) key.SetValue(Name, Command);
-        else key.DeleteValue(Name, false);
+        if (enabled)
+        {
+            using var key = Registry.CurrentUser.CreateSubKey(RunKey);
+            key.SetValue(Name, Command);
+        }
+        else
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(RunKey, writable: true);
+            key?.DeleteValue(Name, false);
+        }
     }
 
     /// <summary>Keeps the stored path right after the exe was moved or updated.</summary>
