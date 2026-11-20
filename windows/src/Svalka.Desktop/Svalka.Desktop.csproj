@@ -15,7 +15,7 @@
     <Product>СВАЛКА</Product>
     <AssemblyTitle>СВАЛКА</AssemblyTitle>
     <Description>СВАЛКА — дела, покупки, ссылки и мысли</Description>
-    <Version>0.4.1</Version>
+    <Version>0.4.2</Version>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <NoWarn>$(NoWarn);WFAC010</NoWarn>
   </PropertyGroup>

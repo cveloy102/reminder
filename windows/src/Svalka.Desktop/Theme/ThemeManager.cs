@@ -89,5 +89,11 @@ public static class ThemeManager
         // Windows 11: caption colour = background colour.
         var caption = IsDark ? 0x101010 : 0xEBF2F5; // COLORREF is 0x00BBGGRR
         DwmSetWindowAttribute(handle, 35, ref caption, sizeof(int));
+        // Windows 11: rounded window corners (the custom frame would otherwise stay square).
+        if (window is not Svalka.Desktop.Views.ReminderToast)
+        {
+            var round = 2; // DWMWCP_ROUND
+            DwmSetWindowAttribute(handle, 33, ref round, sizeof(int));
+        }
     }
 }
