@@ -474,7 +474,8 @@ fun SvalkaScreen(
                                         }
                                     },
                                     backgroundContent = {
-                                        Box(
+                                        // Drawn only while swiping: at rest it peeks out at the row edges during overscroll.
+                                        if (dismissState.dismissDirection != SwipeToDismissBoxValue.Settled) Box(
                                             Modifier.fillMaxSize().background(palette.accent)
                                                 .clearAndSetSemantics { }
                                                 .padding(horizontal = 18.dp),
@@ -508,7 +509,8 @@ fun SvalkaScreen(
                     Row(
                         modifier = Modifier.fillMaxWidth().onSizeChanged { pendingBannerHeightPx = it.height }
                             .padding(bottom = 8.dp)
-                            .background(palette.sheet).border(1.dp, palette.divider)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(palette.sheet).border(1.dp, palette.divider, RoundedCornerShape(8.dp))
                             .padding(start = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -528,6 +530,7 @@ fun SvalkaScreen(
                         modifier = Modifier.fillMaxWidth()
                             .onSizeChanged { composerHeightPx = it.height }
                             .padding(bottom = 12.dp).heightIn(min = 60.dp)
+                            .clip(RoundedCornerShape(12.dp))
                             .background(palette.accent)
                             .padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -575,6 +578,7 @@ fun SvalkaScreen(
                                     TaskList.LINKS -> "Добавить ссылку"
                                     TaskList.THOUGHTS -> "Записать мысль"
                                 } }
+                                .clip(RoundedCornerShape(9.dp))
                                 .background(palette.accentText).clickable { submit() },
                             contentAlignment = Alignment.Center
                         ) {
@@ -1092,7 +1096,7 @@ private fun SvalkaTabs(section: TaskList, onSelect: (TaskList) -> Unit) {
             Column(Modifier.weight(1f).heightIn(min = 48.dp)
                 .clickable { onSelect(list) }.testTag("tab:${list.storageValue}"),
                 verticalArrangement = Arrangement.Center) {
-                Box(Modifier.fillMaxWidth().height(2.dp)
+                Box(Modifier.fillMaxWidth().height(2.dp).clip(RoundedCornerShape(1.dp))
                     .background(if (section == list) palette.accent else palette.divider))
                 Spacer(Modifier.height(9.dp))
                 Text(sectionName(list),
@@ -1151,8 +1155,9 @@ private fun TaskRow(
                     fontWeight = FontWeight.Bold)
             } else Box(
                 modifier = Modifier.padding(top = 2.dp).size(22.dp)
+                    .clip(RoundedCornerShape(6.dp))
                     .background(if (task.completed) palette.accent else Color.Transparent)
-                    .border(2.dp, if (task.completed) palette.accent else palette.foreground),
+                    .border(2.dp, if (task.completed) palette.accent else palette.foreground, RoundedCornerShape(6.dp)),
                 contentAlignment = Alignment.Center
             ) { if (task.completed) Text("✓", color = palette.accentText, fontSize = 14.sp, lineHeight = 14.sp,
                 fontWeight = FontWeight.Bold) }
