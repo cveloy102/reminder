@@ -2,15 +2,23 @@
 
 **Дела, покупки, ссылки и мысли — в одном месте.** Запишите дело, поставьте напоминание, сохраните ссылку или мысль; выполненное можно убрать, а удалённое — вернуть из корзины.
 
-**Android 7+ и Windows 10/11 · версия 2.0 · данные на устройстве, синхронизация через свой сервер**
+**Android 7+ (2.1) и Windows 10/11 (0.4.2) · данные на устройстве, синхронизация через свой сервер**
 
-[**Скачать APK**](https://github.com/cveloy102/reminder/releases/download/v2.0/Svalka-2.0.apk) · [**Установщик Windows**](https://github.com/cveloy102/reminder/releases/download/windows-v0.4.0/Svalka-Windows-Setup-0.4.0.exe) · [Релиз 2.0](https://github.com/cveloy102/reminder/releases/tag/v2.0) · [История версий](CHANGELOG.md) · [Сборка](docs/DEVELOPMENT.md) · [Свой сервер синхронизации](docs/SELF_HOSTING.md)
+[**Скачать APK**](https://github.com/cveloy102/reminder/releases/download/v2.1/Svalka-2.1.apk) · [**Установщик Windows**](https://github.com/cveloy102/reminder/releases/download/windows-v0.4.2/Svalka-Windows-Setup-0.4.2.exe) · [Все релизы](https://github.com/cveloy102/reminder/releases) · [История версий](CHANGELOG.md) · [Сборка](docs/DEVELOPMENT.md) · [Свой сервер синхронизации](docs/SELF_HOSTING.md)
 
 ## Интерфейс
+
+### Android
 
 <table>
 <tr><td align="center"><img src="docs/images/list-tasks.png" width="250" alt="Список дел с закреплённым делом и еженедельным напоминанием"><br>Дела и напоминания</td><td align="center"><img src="docs/images/list-thoughts.png" width="250" alt="Вкладка мыслей с датами записи"><br>Мысли</td><td align="center"><img src="docs/images/thought-editor.png" width="250" alt="Карточка редактирования мысли"><br>Редактирование мысли</td></tr>
 </table>
+
+### Windows
+
+<img src="docs/images/windows-tasks.png" width="640" alt="Свалка для Windows: список дел, закреплённое дело с еженедельным напоминанием и вкладки списков">
+
+*Свалка 0.4.2 для Windows с демонстрационными записями.*
 
 ## Возможности
 
@@ -41,10 +49,11 @@
 
 Энергосбережение Android может влиять на доставку уведомлений. Для важного напоминания проверьте разрешения на своём телефоне. Приложение проверялось на POCO (HyperOS, Android 16).
 
-## В версии 2.0
+## Что нового
 
-- Синхронизация телефона и компьютера через свой сервер: правки приходят за секунды. Как поднять сервер — [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md).
-- Версия для Windows с теми же списками, напоминаниями и копиями ([windows/README.md](windows/README.md)).
+- **Android 2.1 и Windows 0.4.2.** На Android обновлены скругления элементов и убраны полосы по краям при прокрутке. На Windows 11 скруглены углы окна.
+- **В версии 2.0** появилась синхронизация телефона и компьютера через свой сервер. Как поднять сервер — [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md).
+- **Версия для Windows** поддерживает те же списки, напоминания и резервные копии ([windows/README.md](windows/README.md)).
 - Вкладка «Мысли», повторяющиеся напоминания и кнопки в уведомлении (с версий 1.8–1.9).
 
 Подробности — в [CHANGELOG](CHANGELOG.md).
