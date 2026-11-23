@@ -6,6 +6,8 @@
 
 [**Скачать APK**](https://github.com/cveloy102/reminder/releases/download/v2.1/Svalka-2.1.apk) · [**Установщик Windows**](https://github.com/cveloy102/reminder/releases/download/windows-v0.4.2/Svalka-Windows-Setup-0.4.2.exe) · [Все релизы](https://github.com/cveloy102/reminder/releases) · [История версий](CHANGELOG.md) · [Сборка](docs/DEVELOPMENT.md) · [Свой сервер синхронизации](docs/SELF_HOSTING.md)
 
+[Страница приложения](https://cveloy102.github.io/svalka/)
+
 ## Интерфейс
 
 ### Android
